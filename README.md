@@ -157,7 +157,7 @@ Below is a visual walkthrough showing how the **Machine Learning-Based Detection
 
 > **Video Demo**  
 > For a detailed walkthrough, watch the video below:  
-> [![Watch the Demo](path/to/video_thumbnail.png)](link_to_video)
+> [![Watch the Demo](mlw.png)](Video/ML-based-Detection.mp4)
 
 ---
 
