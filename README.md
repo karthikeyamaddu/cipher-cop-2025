@@ -58,7 +58,7 @@ Below is a quick walkthrough demonstrating the **Static Analysis using API** fea
 
 > **Video Demo**  
 > For a more detailed demonstration, watch the video below:  
-> [![Watch the Demo](Image/Staticw.png)](Video/Analysis-API.mp4)
+> [![Watch the Demo](Image/Staticw.png)](https://youtu.be/QN3fpPI5HrU)
 
 ---
 
