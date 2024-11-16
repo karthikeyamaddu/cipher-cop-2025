@@ -157,7 +157,7 @@ Below is a visual walkthrough showing how the **Machine Learning-Based Detection
 
 > **Video Demo**  
 > For a detailed walkthrough, watch the video below:  
-> [![Watch the Demo](mlw.png)](https://youtu.be/ETgdAF1WzU8)
+> [![Watch the Demo](Image/mlw.png)](https://youtu.be/ETgdAF1WzU8)
 
 ---
 
