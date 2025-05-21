@@ -6,7 +6,7 @@ from feature_extraction import extract_features
 app = Flask(__name__)
 
 # Load the trained model
-#model = joblib.load('ML_model/malwareclassifier-V2.pkl')
+model = joblib.load('ML_model/malwareclassifier-V2.pkl')
 
 UPLOAD_FOLDER = 'uploads'
 if not os.path.exists(UPLOAD_FOLDER):
