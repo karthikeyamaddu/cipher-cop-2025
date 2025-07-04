@@ -7,7 +7,7 @@ import time
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
-API_KEY = 'ur api key'
+API_KEY = 'Your virus total API key here'
 VIRUSTOTAL_URL_FILE = 'https://www.virustotal.com/vtapi/v2/file/report'
 VIRUSTOTAL_URL_SCAN = 'https://www.virustotal.com/vtapi/v2/file/scan'
 VIRUSTOTAL_URL_URL = 'https://www.virustotal.com/vtapi/v2/url/report'
@@ -98,7 +98,7 @@ def analyze():
 
         # Save the formatted result in the recent_results list
         recent_results.insert(0, formatted_result)
-        if len(recent_results) > 10:
+        if len(recent_results) > 30:
             recent_results.pop()
 
         # Count malware and clean detections based on the current scan result

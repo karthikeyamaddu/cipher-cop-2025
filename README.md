@@ -52,13 +52,13 @@ Below is a quick walkthrough demonstrating the **Static Analysis using API** fea
 *Description: A user selects a file from their local directory for analysis.*
 
 **Result Page**  
-![Result Page](Image/apiresult1.png)
-![Result Page](Image/apiresult2.png)
+![Result Page](Assets/Image/apiresult1.png)
+![Result Page](Assets/Image/apiresult2.png)
 *Description: Analysis results showing threat intelligence based on VirusTotal’s database.*
 
 > **Video Demo**  
 > For a more detailed demonstration, watch the video below:  
-> [![Watch the Demo](Image/Staticw.png)](https://youtu.be/QN3fpPI5HrU)
+> [![Watch the Demo](Assets/Image/Staticw.png)](https://youtu.be/QN3fpPI5HrU)
 
 ---
 
@@ -70,7 +70,7 @@ Below is a quick walkthrough demonstrating the **Static Analysis using API** fea
     - **Scan Date**: Date of the last scan for the submitted file/URL.
     - **Detection Ratio**: Ratio of the VirusTotal engines that detected a threat.
     - **Detailed Results**: A breakdown of results from different scanning engines.
-![apiworkflow](Image/apiworkflow.png)
+![apiworkflow](Assets/Image/apiworkflow.png)
 ---
 
 ### Benefits of Static Analysis using API
@@ -148,7 +148,7 @@ This feature is specifically designed for the following file types:
 Below is a visual walkthrough showing how the **Machine Learning-Based Detection** feature works.
 
 **Upload Page**  
-![Upload Page](Image/mlw.png)  
+![Upload Page](Assets/Image/mlw.png)  
 *Description: The user selects an executable file for analysis.*
 
 **Analysis Results**  
@@ -157,7 +157,7 @@ Below is a visual walkthrough showing how the **Machine Learning-Based Detection
 
 > **Video Demo**  
 > For a detailed walkthrough, watch the video below:  
-> [![Watch the Demo](Image/mlw.png)](https://youtu.be/ETgdAF1WzU8)
+> [![Watch the Demo](Assets/Image/mlw.png)](https://youtu.be/ETgdAF1WzU8)
 
 ---
 
@@ -167,7 +167,7 @@ Below is a visual walkthrough showing how the **Machine Learning-Based Detection
 2. **Feature Extraction**: The system extracts PE header features and selects only the most important features based on prior analysis.
 3. **Model Prediction**: The Random Forest model uses the extracted features to predict if the file is benign or malicious.
 4. **Result Display**: The application displays the result on a user-friendly interface, including probability scores and model confidence.
-   ![ML workflow](Image/mlworkflow.png)
+   ![ML workflow](Assets/Image/mlworkflow.png)
 ---
 
 ### Benefits of Machine Learning-Based Detection
@@ -192,11 +192,11 @@ This ML-based approach complements the static analysis, providing a comprehensiv
 
 Using a Random Forest Classifier, we evaluated the importance of different features to identify the most significant ones for malware detection. By filtering the features based on their importances, we set a threshold to select only the most relevant features for training our model. This approach enhances the model's efficiency and accuracy.
 ### Before Selection of Features According to Their Importances
-![Feature Importances](Image/bar1.png) 
+![Feature Importances](Assets/Image/bar1.png) 
 
 ### After Selection of Features According to Their Importances
 
-![Feature Importances](Image/bar2.png)
+![Feature Importances](Assets/Image/bar2.png)
 
 
 ### Training a New Model Based on Important Features
@@ -229,13 +229,13 @@ The results demonstrate high performance for both training and validation sets, 
 
 To assess the model's performance over different training set sizes, we generated learning curves. These curves help visualize how the model's accuracy evolves as more training data is added.
 
-![Learning Curves](Image/bar3.png) 
+![Learning Curves](Assets/Image/bar3.png) 
 
 ### Training and Validation Scores by Training Set Size
 
 The bar chart below displays the average training and validation scores along with their standard deviations across various training set sizes.
 
-![Training and Validation Scores](Image/bar4.png)
+![Training and Validation Scores](Assets/Image/bar4.png)
 
 ---
 
