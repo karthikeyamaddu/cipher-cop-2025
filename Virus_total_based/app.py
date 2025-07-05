@@ -7,7 +7,7 @@ import time
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'
 
-API_KEY = 'Your virus total API key here'
+API_KEY = 'b3818ae83b1500f6d34467a766e9972c03838945bfb40f570835193d7931edee'
 VIRUSTOTAL_URL_FILE = 'https://www.virustotal.com/vtapi/v2/file/report'
 VIRUSTOTAL_URL_SCAN = 'https://www.virustotal.com/vtapi/v2/file/scan'
 VIRUSTOTAL_URL_URL = 'https://www.virustotal.com/vtapi/v2/url/report'

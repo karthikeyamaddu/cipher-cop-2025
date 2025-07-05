@@ -241,6 +241,21 @@ The bar chart below displays the average training and validation scores along wi
 
 By analyzing these scores and visualizations, we gain insight into the model's learning behavior and can make informed decisions for further improvements.
 
+# Installation process
+
+```
+1. git clone https://github.com/0xfke/Malware-Detection-and-Analysis-using-Machine-Learning.git
+
+2. cd Malware_based_detectionn
+    python -m venv newvenv
+    source venv/bin/activate
+    pip install -r requirements.txt
+
+3. run both the vt app.py and the ml_based_detection --> python app.py 
+
+This will give ml_based_detection runing on port 5001 and virus_total_based in port 5000
+
+```
 
 ## Contributors ✨
 
