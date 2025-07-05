@@ -5,6 +5,7 @@ Malware Detection and Analysis using Machine Learning WebApp is a robust tool de
 ## Table of Contents
 - [Static Analysis using API](#static-analysis-using-api)
 - [Machine Learning-Based Detection](#machine-learning-based-detection)
+- [Installation Process](#installation-process)
 - [Contributing](#contributing)
 
 
@@ -246,7 +247,7 @@ By analyzing these scores and visualizations, we gain insight into the model's l
 ```
 1. git clone https://github.com/0xfke/Malware-Detection-and-Analysis-using-Machine-Learning.git
 
-2. cd Malware_based_detectionn
+2. cd ML_based_detectionn
     python -m venv newvenv
     source venv/bin/activate
     pip install -r requirements.txt
