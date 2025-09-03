@@ -1,0 +1,9 @@
+numpy
+requests
+beautifulsoup4
+tqdm
+gdown
+Pillow
+flask
+flask-cors
+lxml

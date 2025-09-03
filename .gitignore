@@ -1,0 +1,138 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+Phishpedia/phishpedia_env/
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Model files and weights (too large for GitHub)
+*.pth
+*.pth.tar
+*.tar
+*.pkl
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.ckpt
+*.pb
+*.onnx
+
+# Specific large model files
+Phishpedia/models/rcnn_bet365.pth
+Phishpedia/models/resnetv2_rgb_new.pth.tar
+Phishpedia/models/domain_map.pkl
+Phishpedia/LOGO_FEATS.npy
+Phishpedia/LOGO_FILES.npy
+
+# Brand database (too large for GitHub)
+Phishpedia/models/expand_targetlist/
+Phishpedia/models/__MACOSX/
+Phishpedia/models/expand_targetlist.zip
+
+# Test datasets and results
+Phishpedia/datasets/test_sites/
+Phishpedia/datasets/*.png
+Phishpedia/datasets/*.jpg
+Phishpedia/datasets/*.jpeg
+*_results.txt
+Phishpedia/20*_results.txt
+
+# Web tool temporary files and uploads
+Phishpedia/WEBtool/temp_uploads/
+Phishpedia/WEBtool/plugin_logs/
+Phishpedia/WEBtool/__pycache__/
+
+# Log files
+*.log
+logs/
+log/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# PyTorch
+*.pt
+
+# Detectron2 compiled extensions
+*.pyd
+*.dll
+
+# Package management
+node_modules/
+.pixi/
+.conda/
+
+# Configuration files with sensitive data
+config_local.py
+config_local.yaml
+secrets.yaml
+.env.local
+
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Documentation builds
+docs/_build/
+docs/build/
+
+# Backup files
+*.bak
+*.backup
+
+# Specific files with sensitive content
+Phishpedia/models/expand_targetlist/Stripe/homepage_html.txt
