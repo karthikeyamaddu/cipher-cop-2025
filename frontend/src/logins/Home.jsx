@@ -7,6 +7,7 @@ import MalwarePage from './MalwarePage';
 import ClonePage from './ClonePage';
 import ScamPage from './ScamPage';
 import './Home.css';
+import ProfilePage from './profile.jsx';
 const Home = () => {
   const [activeSection, setActiveSection] = useState('home');
   const [sidebarOpen, setSidebarOpen] = useState(false); // Changed to false by default
@@ -71,7 +72,8 @@ const Home = () => {
     { id: 'phishing', name: 'Phishing', icon: AlertTriangle },
     { id: 'malware', name: 'Malware Detection', icon: Bug },
     { id: 'clone', name: 'Clone Check', icon: Copy },
-    { id: 'scam', name: 'Scam Check', icon: DollarSign }
+    { id: 'scam', name: 'Scam Check', icon: DollarSign },
+    { id: 'profile', name: 'Profile', icon: User }
   ];
 
   const features = [
@@ -115,9 +117,11 @@ const Home = () => {
       case 'malware':
         return <MalwarePage key={animationKey} />;
       case 'clone':
-        return <ClonePage key={animationKey} />;
-      case 'scam':
-        return <ScamPage key={animationKey} />;
+        case 'profile':
+          return <ProfilePage key={animationKey} />;
+        return <React.Suspense fallback={<div>Loading Profile...</div>}>
+          {React.createElement(require('./profile.jsx').default)}
+        </React.Suspense>;
       default:
         return (
           <div className="home-content">
