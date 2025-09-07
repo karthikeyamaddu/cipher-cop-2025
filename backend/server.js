@@ -164,188 +164,67 @@ app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
     }
 });
 
-// Malware detection endpoint
-app.post('/api/malware/analyze', protectRoute, async (req, res) => {
+// Malware/Sandbox test result storage endpoint
+app.post('/api/malware/store', protectRoute, async (req, res) => {
     const startTime = Date.now();
     try {
-        const { file, url, fileName } = req.body;
+        const { fileName, testType, result } = req.body;
         
-        if (!file && !url) {
+        if (!fileName || !testType || !result) {
             return res.status(400).json({ 
-                error: 'File or URL is required for malware analysis',
+                error: 'fileName, testType, and result are required',
                 success: false 
             });
         }
 
-        // Simulate malware analysis (replace with actual implementation)
-        const analysis = {
-            isMalware: Math.random() > 0.7,
-            threatLevel: ['low', 'medium', 'high'][Math.floor(Math.random() * 3)],
-            riskScore: Math.floor(Math.random() * 100),
-            detectedThreats: ['Trojan', 'Virus', 'Adware'][Math.floor(Math.random() * 3)],
-            scanResults: {
-                engines: 45,
-                detections: Math.floor(Math.random() * 10)
+        console.log(`Storing ${testType} test result for file: ${fileName}`);
+        
+        // Save test result to MongoDB
+        const testResult = new TestResult({
+            userId: req.user._id,
+            testType: testType, // 'sandbox' or 'malware'
+            inputData: {
+                fileName: fileName
+            },
+            result: {
+                isMalware: result.positives > 0 || result.verdict === 'malicious',
+                threatLevel: result.verdict || (result.positives > 10 ? 'high' : result.positives > 0 ? 'medium' : 'low'),
+                riskScore: result.threatScore || (result.positives / (result.total || 1)) * 100,
+            },
+            details: {
+                processingTime: Date.now() - startTime,
+                fileName: fileName,
+                scanDate: result.scanDate || new Date().toISOString().split('T')[0],
+                detections: result.detections || [],
+                analysisType: testType,
+                sandboxData: result.sandboxData || null,
+                positives: result.positives || 0,
+                total: result.total || 1,
+                verdict: result.verdict || 'unknown'
             }
-        };
-
-        const processingTime = Date.now() - startTime;
-        
-        // Save test result to MongoDB
-        const testResult = new TestResult({
-            userId: req.user._id,
-            testType: 'malware',
-            inputData: {
-                url: url || null,
-                fileName: fileName || 'unknown_file'
-            },
-            result: {
-                isMalware: analysis.isMalware,
-                threatLevel: analysis.threatLevel,
-                riskScore: analysis.riskScore
-            },
-            details: analysis,
-            flags: analysis.isMalware ? ['Malware Detected'] : ['Clean'],
-            recommendations: analysis.isMalware ? ['Quarantine file', 'Run full system scan'] : ['File appears safe'],
-            insights: analysis.isMalware ? 'Potential malware detected' : 'No malware signatures found',
-            processingTime
         });
-
+        
         await testResult.save();
         
         res.status(200).json({
             success: true,
-            data: analysis
+            data: {
+                testId: testResult._id,
+                message: `${testType} test result stored successfully`
+            }
         });
         
     } catch (error) {
-        console.error('Malware analysis error:', error);
+        console.error('Malware test storage error:', error);
         res.status(500).json({ 
-            error: 'Analysis failed: ' + error.message,
+            error: 'Failed to store malware test result: ' + error.message,
             success: false 
         });
     }
 });
 
-// Clone detection endpoint
-app.post('/api/clone/analyze', protectRoute, async (req, res) => {
-    const startTime = Date.now();
-    try {
-        const { url, originalUrl } = req.body;
-        
-        if (!url) {
-            return res.status(400).json({ 
-                error: 'URL is required for clone analysis',
-                success: false 
-            });
-        }
 
-        // Simulate clone analysis (replace with actual implementation)
-        const analysis = {
-            isClone: Math.random() > 0.6,
-            similarity: Math.floor(Math.random() * 100),
-            originalSite: originalUrl || 'example.com',
-            cloneScore: Math.floor(Math.random() * 100),
-            suspiciousElements: ['Logo similarity', 'Color scheme match', 'Layout similarity']
-        };
 
-        const processingTime = Date.now() - startTime;
-        
-        // Save test result to MongoDB
-        const testResult = new TestResult({
-            userId: req.user._id,
-            testType: 'clone',
-            inputData: {
-                url: url,
-                content: originalUrl
-            },
-            result: {
-                isClone: analysis.isClone,
-                riskScore: analysis.cloneScore,
-                confidence: analysis.similarity
-            },
-            details: analysis,
-            flags: analysis.isClone ? ['Potential Clone Site'] : ['Original Site'],
-            recommendations: analysis.isClone ? ['Verify site authenticity', 'Check official domain'] : ['Site appears legitimate'],
-            insights: analysis.isClone ? 'Website may be cloning another site' : 'No clone characteristics detected',
-            processingTime
-        });
-
-        await testResult.save();
-        
-        res.status(200).json({
-            success: true,
-            data: analysis
-        });
-        
-    } catch (error) {
-        console.error('Clone analysis error:', error);
-        res.status(500).json({ 
-            error: 'Analysis failed: ' + error.message,
-            success: false 
-        });
-    }
-});
-
-// Scam detection endpoint
-app.post('/api/scam/analyze', protectRoute, async (req, res) => {
-    const startTime = Date.now();
-    try {
-        const { content, type } = req.body; // type: 'email', 'message', 'website'
-        
-        if (!content) {
-            return res.status(400).json({ 
-                error: 'Content is required for scam analysis',
-                success: false 
-            });
-        }
-
-        // Simulate scam analysis (replace with actual implementation)
-        const analysis = {
-            isScam: Math.random() > 0.5,
-            scamType: ['Phishing', 'Romance', 'Investment', 'Tech Support'][Math.floor(Math.random() * 4)],
-            confidenceScore: Math.floor(Math.random() * 100),
-            riskFactors: ['Urgent language', 'Money request', 'Suspicious links'],
-            sentiment: 'manipulative'
-        };
-
-        const processingTime = Date.now() - startTime;
-        
-        // Save test result to MongoDB
-        const testResult = new TestResult({
-            userId: req.user._id,
-            testType: 'scam',
-            inputData: {
-                content: content,
-                url: type
-            },
-            result: {
-                isScam: analysis.isScam,
-                riskScore: analysis.confidenceScore,
-                confidence: analysis.confidenceScore
-            },
-            details: analysis,
-            flags: analysis.isScam ? ['Potential Scam'] : ['Appears Legitimate'],
-            recommendations: analysis.isScam ? ['Do not respond', 'Report to authorities'] : ['Content appears safe'],
-            insights: analysis.isScam ? `Potential ${analysis.scamType} scam detected` : 'No scam indicators found',
-            processingTime
-        });
-
-        await testResult.save();
-        
-        res.status(200).json({
-            success: true,
-            data: analysis
-        });
-        
-    } catch (error) {
-        console.error('Scam analysis error:', error);
-        res.status(500).json({ 
-            error: 'Analysis failed: ' + error.message,
-            success: false 
-        });
-    }
-});
 
 // Get user's test history
 app.get('/api/tests/history', protectRoute, async (req, res) => {
@@ -353,7 +232,7 @@ app.get('/api/tests/history', protectRoute, async (req, res) => {
         const { page = 1, limit = 10, testType } = req.query;
         
         const query = { userId: req.user._id };
-        if (testType && ['phishing', 'malware', 'clone', 'scam'].includes(testType)) {
+        if (testType && ['phishing', 'malware', 'clone', 'scam', 'sandbox'].includes(testType)) {
             query.testType = testType;
         }
         
@@ -419,6 +298,8 @@ app.get('/api/tests/:id', protectRoute, async (req, res) => {
 // Get user statistics
 app.get('/api/tests/stats', protectRoute, async (req, res) => {
     try {
+        console.log('Stats endpoint called for user:', req.user._id);
+        
         const stats = await TestResult.aggregate([
             { $match: { userId: req.user._id } },
             {
@@ -447,24 +328,31 @@ app.get('/api/tests/stats', protectRoute, async (req, res) => {
             }
         ]);
         
+        console.log('Aggregation result:', stats);
+        
         const totalTests = await TestResult.countDocuments({ userId: req.user._id });
+        console.log('Total tests:', totalTests);
+        
+        const summary = {
+            totalThreats: stats.reduce((sum, stat) => sum + stat.threatsFound, 0),
+            avgRiskScore: stats.length > 0 
+                ? stats.reduce((sum, stat) => sum + (stat.avgRiskScore || 0), 0) / stats.length 
+                : 0
+        };
         
         res.status(200).json({
             success: true,
             data: {
                 totalTests,
                 byType: stats,
-                summary: {
-                    totalThreats: stats.reduce((sum, stat) => sum + stat.threatsFound, 0),
-                    avgRiskScore: stats.reduce((sum, stat) => sum + (stat.avgRiskScore || 0), 0) / stats.length || 0
-                }
+                summary
             }
         });
         
     } catch (error) {
         console.error('Test stats error:', error);
         res.status(500).json({ 
-            error: 'Failed to fetch test statistics',
+            error: 'Failed to fetch test statistics: ' + error.message,
             success: false 
         });
     }
@@ -560,6 +448,79 @@ function analyzeEmailContent(content) {
         }
     };
 }
+
+// Malware test result storage endpoint
+app.post('/api/malware/store', protectRoute, async (req, res) => {
+    const startTime = Date.now();
+    try {
+        console.log('=== MALWARE STORAGE ENDPOINT ===');
+        console.log('Request body:', JSON.stringify(req.body, null, 2));
+        console.log('User from token:', req.user ? req.user._id : 'No user');
+        
+        const { fileName, testType, result } = req.body;
+        
+        console.log('Extracted values:');
+        console.log('fileName:', fileName);
+        console.log('testType:', testType);
+        console.log('result:', result);
+        
+        if (!fileName || !testType || !result) {
+            console.log('❌ Missing required fields');
+            return res.status(400).json({ 
+                error: 'fileName, testType, and result are required',
+                success: false 
+            });
+        }
+
+        console.log(`✅ Storing ${testType} malware test result for file: ${fileName}`);
+        
+        console.log('Creating TestResult document...');
+        // Save test result to MongoDB
+        const testResult = new TestResult({
+            userId: req.user._id,
+            testType: testType, // 'malware' or 'sandbox'
+            inputData: {
+                fileName: fileName
+            },
+            result: {
+                isMalware: result.positives > 0 || result.verdict === 'malicious',
+                threatLevel: result.verdict || (result.positives > 10 ? 'high' : result.positives > 0 ? 'medium' : 'low'),
+                riskScore: result.threatScore || (result.positives / (result.total || 1)) * 100,
+                positives: result.positives || 0,
+                total: result.total || 1,
+                verdict: result.verdict || 'unknown',
+                sandboxData: result.sandboxData || null
+            },
+            details: {
+                processingTime: Date.now() - startTime,
+                fileName: fileName,
+                scanDate: result.scanDate || new Date().toISOString().split('T')[0],
+                detections: result.detections || [],
+                analysisType: testType
+            }
+        });
+        
+        console.log('Saving to MongoDB...');
+        await testResult.save();
+        console.log('✅ Successfully saved to MongoDB');
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                testId: testResult._id,
+                message: `${testType} test result stored successfully`
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Malware test storage error:', error);
+        console.error('Error stack:', error.stack);
+        res.status(500).json({ 
+            error: 'Failed to store malware test result: ' + error.message,
+            success: false 
+        });
+    }
+});
 
 const PORT = 5001; 
 
