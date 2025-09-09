@@ -117,8 +117,11 @@ const Home = () => {
       case 'malware':
         return <MalwarePage key={animationKey} />;
       case 'clone':
-        case 'profile':
-          return <ProfilePage key={animationKey} />;
+        return <ClonePage key={animationKey} />;
+      case 'scam':
+        return <ScamPage key={animationKey} />;
+      case 'profile':
+        return <ProfilePage key={animationKey} />;
         return <React.Suspense fallback={<div>Loading Profile...</div>}>
           {React.createElement(require('./profile.jsx').default)}
         </React.Suspense>;

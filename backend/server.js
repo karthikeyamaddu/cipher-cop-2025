@@ -1,5 +1,5 @@
 import express from "express";
-import {signup,login,logout} from "./src/controller/auth.js";
+import {signup,login,logout,extensionAuth} from "./src/controller/auth.js";
 import { connectDB } from "./src/lib/db.js";
 import cookieParser from "cookie-parser"
 import { protectRoute } from "./src/controller/tokengen.js";
@@ -13,7 +13,7 @@ const app = express();
 
 app.use(
     cors({
-        origin: ["http://localhost:5173", "http://localhost:5174"], 
+        origin: true, // Allow all origins for extension compatibility
         credentials: true, 
     })
 );
@@ -28,6 +28,7 @@ app.use(cookieParser());
 app.post("/signup", signup);
 app.post("/login", login);
 app.post("/logout", logout);
+app.post("/api/auth/extension-auth", extensionAuth);
 app.get('/checkAuth', protectRoute, (req, res) => {
     res.status(200).json({ message: 'User is authenticated', user: req.user });
 });
@@ -164,6 +165,49 @@ app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
     }
 });
 
+// Simplified phishing analysis endpoint for browser extension (no auth required)
+app.post('/api/phishing/analyze-simple', async (req, res) => {
+    const startTime = Date.now();
+    try {
+        const { url } = req.body;
+        
+        if (!url) {
+            return res.status(400).json({ 
+                error: 'URL is required',
+                success: false 
+            });
+        }
+
+        console.log(`Extension phishing analysis request for: ${url}`);
+
+        // Perform phishing analysis using the same detector
+        const analysis = await phishingDetector.analyzeUrl(url);
+        
+        // Simplified response format for extension
+        const response = {
+            success: true,
+            data: {
+                url: analysis.url,
+                domain: analysis.domain,
+                isPhishing: analysis.isPhishing,
+                threatLevel: analysis.threatLevel || 'low',
+                riskScore: analysis.riskScore,
+                flags: analysis.flags,
+                summary: analysis.aiInsights || 'Analysis completed'
+            }
+        };
+
+        res.status(200).json(response);
+        
+    } catch (error) {
+        console.error('Extension phishing analysis error:', error);
+        res.status(500).json({ 
+            error: 'Analysis failed: ' + error.message,
+            success: false 
+        });
+    }
+});
+
 // Malware/Sandbox test result storage endpoint
 app.post('/api/malware/store', protectRoute, async (req, res) => {
     const startTime = Date.now();
@@ -266,36 +310,7 @@ app.get('/api/tests/history', protectRoute, async (req, res) => {
     }
 });
 
-// Get detailed test result
-app.get('/api/tests/:id', protectRoute, async (req, res) => {
-    try {
-        const test = await TestResult.findOne({ 
-            _id: req.params.id, 
-            userId: req.user._id 
-        });
-        
-        if (!test) {
-            return res.status(404).json({ 
-                error: 'Test not found',
-                success: false 
-            });
-        }
-        
-        res.status(200).json({
-            success: true,
-            data: test
-        });
-        
-    } catch (error) {
-        console.error('Test detail error:', error);
-        res.status(500).json({ 
-            error: 'Failed to fetch test details',
-            success: false 
-        });
-    }
-});
-
-// Get user statistics
+// Get user statistics (MUST come before /api/tests/:id)
 app.get('/api/tests/stats', protectRoute, async (req, res) => {
     try {
         console.log('Stats endpoint called for user:', req.user._id);
@@ -353,6 +368,35 @@ app.get('/api/tests/stats', protectRoute, async (req, res) => {
         console.error('Test stats error:', error);
         res.status(500).json({ 
             error: 'Failed to fetch test statistics: ' + error.message,
+            success: false 
+        });
+    }
+});
+
+// Get detailed test result (MUST come after /api/tests/stats)
+app.get('/api/tests/:id', protectRoute, async (req, res) => {
+    try {
+        const test = await TestResult.findOne({ 
+            _id: req.params.id, 
+            userId: req.user._id 
+        });
+        
+        if (!test) {
+            return res.status(404).json({ 
+                error: 'Test not found',
+                success: false 
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            data: test
+        });
+        
+    } catch (error) {
+        console.error('Test detail error:', error);
+        res.status(500).json({ 
+            error: 'Failed to fetch test details',
             success: false 
         });
     }

@@ -94,10 +94,19 @@ const ProfilePage = () => {
   };
 
   const getThreatColor = (result) => {
+    // Check boolean threat indicators first
     if (result.isPhishing || result.isMalware || result.isClone || result.isScam) {
-      return '#ef4444';
+      return '#ef4444'; // Red for confirmed threats
     }
-    return '#22c55e';
+    
+    // Check threat level for non-boolean assessments (like medium risk phishing)
+    if (result.threatLevel === 'high') {
+      return '#ef4444'; // Red for high threat
+    } else if (result.threatLevel === 'medium') {
+      return '#f59e0b'; // Orange for medium threat
+    }
+    
+    return '#22c55e'; // Green for safe/low threat
   };
 
   const firstLetter = profile.fullName ? profile.fullName[0].toUpperCase() : 'U';
@@ -647,8 +656,14 @@ const ProfilePage = () => {
                         borderRadius: 6,
                         background: 'rgba(0,0,0,0.2)'
                       }}>
+                        {/* Show proper threat level instead of just THREAT/SAFE */}
                         {test.result.isPhishing || test.result.isMalware || test.result.isClone || test.result.isScam 
-                          ? 'THREAT' : 'SAFE'}
+                          ? 'THREAT' 
+                          : test.result.threatLevel === 'high' 
+                            ? 'HIGH RISK'
+                            : test.result.threatLevel === 'medium'
+                              ? 'MEDIUM RISK'
+                              : 'SAFE'}
                       </div>
                     </div>
                     

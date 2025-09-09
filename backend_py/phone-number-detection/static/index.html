@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Phone Scam Lookup</title>
+  <style>
+    body{font-family: Arial,Helvetica,sans-serif;max-width:900px;margin:24px auto;padding:12px}
+    .card{border:1px solid #ddd;padding:12px;border-radius:8px;margin-top:12px}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;color:white}
+    .red{background:#d9534f}
+    .orange{background:#f0ad4e}
+    .green{background:#5cb85c}
+    
+    /* Enhanced Analysis Styles */
+    .result-card {
+      border: 1px solid #ddd;
+      padding: 16px;
+      border-radius: 8px;
+      margin: 12px 0;
+      background: #fff;
+    }
+    
+    .score-display {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    
+    .score-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #333;
+    }
+    
+    .score-label {
+      font-size: 14px;
+      color: #666;
+    }
+    
+    .verdict {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 12px;
+    }
+    
+    .confidence-display {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+    
+    .ai-verdict {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: #6f42c1;
+    }
+    
+    .ai-confidence {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 12px;
+    }
+    
+    .ai-explanation {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+    }
+    
+    .debug-toggle {
+      text-align: center;
+      margin: 16px 0;
+    }
+    
+    .debug-section {
+      margin: 16px 0;
+    }
+    
+    .debug-section h4 {
+      color: #666;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 4px;
+    }
+    
+    .api-status-item {
+      display: inline-block;
+      margin: 4px 8px 4px 0;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    
+    .api-set {
+      background: #d4edda;
+      color: #155724;
+    }
+    
+    .api-not-set {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    
+    /* Verdict color coding */
+    .verdict-confirmed-scam { color: #dc3545; }
+    .verdict-likely-scam { color: #fd7e14; }
+    .verdict-suspicious { color: #ffc107; }
+    .verdict-caution { color: #17a2b8; }
+    .verdict-safe { color: #28a745; }
+  </style>
+</head>
+<body>
+  <h2>Phone Scam Lookup</h2>
+  <p>Enter a phone number. The service will normalize it and query reputation & telephony providers (if keys present) and return a risk score and verdict.</p>
+  
+  <div class="card">
+    <label>Phone number</label><br>
+    <input id="phone" type="text" placeholder="e.g. +91 98765 43210 or 09876543210" style="width:70%" />
+    <select id="region">
+      <option value="">Auto</option>
+      <option value="IN">India (+91)</option>
+      <option value="US">United States (+1)</option>
+      <option value="GB">United Kingdom (+44)</option>
+    </select>
+    
+    <!-- SERVICE SELECTION SECTION -->
+    <div style="margin: 16px 0; padding: 12px; background: #f8f9fa; border-radius: 4px;">
+      <h4 style="margin-top: 0;">🔧 Select Services to Use:</h4>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px;">
+        <label style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="use_ipqs" checked>
+          <span>🔍 IPQS (Fraud Score)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="use_twilio" checked>
+          <span>📞 Twilio (Line Type)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="use_telesign_api1" checked>
+          <span>🛡️ Telesign API1 (Advanced Intel)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="use_telesign_api2" checked>
+          <span>🔒 Telesign API2 (Complete Profile)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="use_numverify" checked>
+          <span>✅ Numverify (Validation)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="use_scam_db" checked>
+          <span>🚨 Scam Databases</span>
+        </label>
+      </div>
+      <div style="margin-top: 8px;">
+        <button onclick="selectAllServices()" style="font-size: 12px; padding: 4px 8px; margin-right: 8px;">Select All</button>
+        <button onclick="deselectAllServices()" style="font-size: 12px; padding: 4px 8px;">Deselect All</button>
+      </div>
+    </div>
+    
+    <button id="check">Check</button>
+  </div>
+  
+  <div id="result"></div>
+  
+  <!-- SPAM DATABASE MANAGEMENT SECTION -->
+  <div class="card" style="margin-top: 24px;">
+    <h3>🗃️ Spam Database Management</h3>
+    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+      <button onclick="loadSpamDatabase()" style="background: #28a745; color: white;">📋 Load Database</button>
+      <button onclick="showAddForm()" style="background: #007bff; color: white;">➕ Add Number</button>
+      <button onclick="refreshStats()" style="background: #6c757d; color: white;">📊 Refresh Stats</button>
+    </div>
+    
+    <!-- Add Number Form -->
+    <div id="addForm" style="display: none; background: #f8f9fa; padding: 12px; border-radius: 4px; margin-bottom: 16px;">
+      <h4>Add New Spam Number</h4>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+        <input type="text" id="newPhone" placeholder="Phone number (e.g., 919999999999)" />
+        <select id="newCategory">
+          <option value="spam">Spam</option>
+          <option value="scam">Scam</option>
+          <option value="telemarketing">Telemarketing</option>
+          <option value="robocall">Robocall</option>
+          <option value="fraud">Fraud</option>
+        </select>
+      </div>
+      <input type="text" id="newDescription" placeholder="Description (optional)" style="width: 100%; margin-bottom: 8px;" />
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <label>Confidence: <input type="range" id="newConfidence" min="1" max="100" value="50" oninput="document.getElementById('confidenceValue').textContent=this.value" /></label>
+        <span id="confidenceValue">50</span>%
+        <button onclick="addSpamNumber()" style="background: #28a745; color: white; margin-left: auto;">Add</button>
+        <button onclick="hideAddForm()" style="background: #6c757d; color: white;">Cancel</button>
+      </div>
+    </div>
+    
+    <!-- Database Stats -->
+    <div id="dbStats" style="margin-bottom: 16px;"></div>
+    
+    <!-- Database Table -->
+    <div id="spamDatabase"></div>
+  </div>
+  
+  <script>
+    const checkBtn = document.getElementById('check')
+    const phoneInp = document.getElementById('phone')
+    const regionSel = document.getElementById('region')
+    const resultDiv = document.getElementById('result')
+    
+    function renderResult(data){
+      if(data.error){
+        resultDiv.innerHTML = `<div class="card"><strong>Error:</strong> ${data.error}</div>`
+        return
+      }
+      
+      const {e164, score, verdict, reasons, enhanced_analysis, ai_analysis, ai_error, debug_info} = data
+      
+      // Traditional score color mapping
+      let colorClass='green'
+      if(score>=75) colorClass='red'
+      else if(score>=50) colorClass='orange'
+      else if(score>=25) colorClass='green'
+      else colorClass='green'
+      
+      // Enhanced verdict color class
+      function getVerdictClass(verdict) {
+        const v = verdict.toLowerCase()
+        if (v.includes('confirmed scam')) return 'verdict-confirmed-scam'
+        if (v.includes('likely scam')) return 'verdict-likely-scam'
+        if (v.includes('suspicious')) return 'verdict-suspicious'
+        if (v.includes('caution')) return 'verdict-caution'
+        return 'verdict-safe'
+      }
+      
+      // Build reasons HTML
+      const reasonsHtml = (reasons || []).map(r=>`<li>${r}</li>`).join('')
+      
+      // Enhanced analysis HTML
+      let enhancedHtml = ''
+      if (enhanced_analysis && enhanced_analysis.score !== undefined) {
+        const enhancedReasonsHtml = (enhanced_analysis.reasons || []).map(r=>`<li>${r}</li>`).join('')
+        const confidenceFactorsHtml = (enhanced_analysis.confidence_factors || []).map(r=>`<li style="color: #28a745;">${r}</li>`).join('')
+        const verdictClass = getVerdictClass(enhanced_analysis.verdict)
+        
+        enhancedHtml = `
+          <div class="result-card">
+            <h3>🔍 Enhanced Analysis</h3>
+            <div class="score-display">
+              <span class="score-value">${enhanced_analysis.score}</span>
+              <span class="score-label">Enhanced Risk Score</span>
+            </div>
+            <div class="verdict ${verdictClass}">${enhanced_analysis.verdict}</div>
+            <div class="confidence-display">
+              Confidence: ${Math.round(enhanced_analysis.confidence * 100)}% | 
+              Signals: ${enhanced_analysis.total_signals} | 
+              Risk Factors: ${enhanced_analysis.risk_factors.length}
+            </div>
+            ${enhancedReasonsHtml ? `
+              <div class="reasons">
+                <h4>🚨 Risk Factors:</h4>
+                <ul>${enhancedReasonsHtml}</ul>
+              </div>
+            ` : ''}
+            ${confidenceFactorsHtml ? `
+              <div class="confidence-factors">
+                <h4>✅ Positive Indicators:</h4>
+                <ul>${confidenceFactorsHtml}</ul>
+              </div>
+            ` : ''}
+          </div>
+        `
+      }
+      
+      // AI analysis HTML
+      let aiHtml = ''
+      if (ai_analysis) {
+        const aiVerdictClass = getVerdictClass(ai_analysis.verdict || '')
+        const aiPatternsHtml = (ai_analysis.patterns || []).map(p=>`<li>${p}</li>`).join('')
+        const aiRecommendationsHtml = (ai_analysis.recommendations || []).map(r=>`<li>${r}</li>`).join('')
+        
+        aiHtml = `
+          <div class="result-card">
+            <h3>🤖 AI Analysis</h3>
+            <div class="ai-verdict ${aiVerdictClass}">${ai_analysis.verdict || 'No verdict'}</div>
+            <div class="ai-confidence">AI Confidence: ${ai_analysis.confidence || 'N/A'}%</div>
+            ${ai_analysis.explanation ? `
+              <div class="ai-explanation">
+                <h4>Assessment:</h4>
+                <p>${ai_analysis.explanation}</p>
+              </div>
+            ` : ''}
+            ${aiPatternsHtml ? `
+              <div class="ai-patterns">
+                <h4>🔍 Detected Patterns:</h4>
+                <ul>${aiPatternsHtml}</ul>
+              </div>
+            ` : ''}
+            ${aiRecommendationsHtml ? `
+              <div class="ai-recommendations">
+                <h4>💡 Recommendations:</h4>
+                <ul>${aiRecommendationsHtml}</ul>
+              </div>
+            ` : ''}
+          </div>
+        `
+      } else if (ai_error) {
+        aiHtml = `
+          <div class="result-card">
+            <h3>🤖 AI Analysis</h3>
+            <div style="color: #dc3545; padding: 12px; background: #f8d7da; border-radius: 4px;">
+              <strong>AI Analysis Error:</strong> ${ai_error}
+            </div>
+          </div>
+        `
+      }
+      
+      resultDiv.innerHTML = `
+        <!-- Traditional Analysis -->
+        <div class="result-card">
+          <h3>📊 Traditional Analysis</h3>
+          <div style="display:flex;align-items:center;justify-content:space-between; margin-bottom: 16px;">
+            <div>
+              <div><small>Normalized (E.164)</small></div>
+              <div><strong>${e164}</strong></div>
+            </div>
+            <div style="text-align: right;">
+              <div class="badge ${colorClass}" style="font-size:18px">${verdict}</div>
+              <div style="margin-top:8px">Score: <strong>${score}</strong></div>
+            </div>
+          </div>
+          ${reasonsHtml ? `
+            <div class="reasons">
+              <strong>Evidence:</strong>
+              <ul>${reasonsHtml}</ul>
+            </div>
+          ` : ''}
+          <div style="margin-top:12px">
+            <button id="reportBtn" style="background: #dc3545; color: white; padding: 8px 12px; border: none; border-radius: 4px;">Report as Spam</button>
+          </div>
+        </div>
+        
+        ${enhancedHtml}
+        ${aiHtml}
+        
+        <!-- Debug Toggle -->
+        <div class="debug-toggle">
+          <button id="debugToggleBtn" onclick="toggleDebugInfo()" style="background: #6c757d; color: white; padding: 8px 16px; border: none; border-radius: 4px;">
+            Show Debug Info
+          </button>
+        </div>
+        
+        <!-- Debug Information (Hidden by Default) -->
+        <div id="debugInfo" style="display: none;">
+          <div class="result-card">
+            <h3>🔧 Debug Information</h3>
+            
+            <!-- API Status -->
+            <div class="debug-section">
+              <h4>API Keys Status:</h4>
+              <div id="apiStatus"></div>
+            </div>
+            
+            <!-- Provider Responses -->
+            <div class="debug-section">
+              <h4>Provider Raw Responses:</h4>
+              <div id="providerResponses"></div>
+            </div>
+            
+            <!-- Reports Count -->
+            <div class="debug-section">
+              <h4>Additional Info:</h4>
+              <p><strong>User Reports:</strong> ${debug_info?.reports_count || 0}</p>
+            </div>
+          </div>
+        </div>
+      `
+      
+      // Populate debug info
+      if (debug_info) {
+        // API Status
+        const apiStatusDiv = document.getElementById('apiStatus')
+        const apiStatusHtml = Object.entries(debug_info.api_keys_status || {})
+          .map(([key, status]) => `
+            <span class="api-status-item ${status === 'SET' ? 'api-set' : 'api-not-set'}">
+              ${key}: ${status}
+            </span>
+          `)
+          .join('')
+        apiStatusDiv.innerHTML = apiStatusHtml
+        
+        // Provider Responses
+        const providersDiv = document.getElementById('providerResponses')
+        const providersHtml = Object.entries(debug_info.provider_responses || {})
+          .map(([provider, response]) => `
+            <div style="margin-bottom:16px;">
+              <strong>${provider.toUpperCase()}:</strong>
+              <pre style="background:#f8f9fa; padding:8px; border:1px solid #ddd; margin:4px 0; overflow-x:auto; font-size:11px; border-radius:4px;">${JSON.stringify(response, null, 2)}</pre>
+            </div>
+          `)
+          .join('')
+        providersDiv.innerHTML = providersHtml
+      }
+      
+      // Report button functionality
+      document.getElementById('reportBtn').onclick = async ()=>{
+        const reason = prompt('Why are you reporting this number? (optional)') || 'user_report'
+        const resp = await fetch('/report', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ phone: phoneInp.value, region_hint: regionSel.value, reason })
+        })
+        const j = await resp.json()
+        alert(j.message || j.status || 'Reported')
+      }
+    }
+    
+    // Debug toggle function
+    function toggleDebugInfo() {
+      const debugInfo = document.getElementById('debugInfo')
+      const toggleBtn = document.getElementById('debugToggleBtn')
+      
+      if (debugInfo.style.display === 'none') {
+        debugInfo.style.display = 'block'
+        toggleBtn.textContent = 'Hide Debug Info'
+      } else {
+        debugInfo.style.display = 'none'
+        toggleBtn.textContent = 'Show Debug Info'
+      }
+    }
+    
+    checkBtn.onclick = async ()=>{
+      resultDiv.innerHTML = '<div class="card">Checking...</div>'
+      
+      // Get selected services
+      const selectedServices = {
+        ipqs: document.getElementById('use_ipqs').checked,
+        twilio: document.getElementById('use_twilio').checked,
+        telesign_api1: document.getElementById('use_telesign_api1').checked,
+        telesign_api2: document.getElementById('use_telesign_api2').checked,
+        numverify: document.getElementById('use_numverify').checked,
+        scam_databases: document.getElementById('use_scam_db').checked
+      };
+      
+      try{
+        const resp = await fetch('/lookup', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ 
+            phone: phoneInp.value, 
+            region_hint: regionSel.value,
+            selected_services: selectedServices
+          })
+        })
+        const j = await resp.json()
+        renderResult(j)
+      }catch(e){
+        resultDiv.innerHTML = `<div class="card"><strong>Error:</strong> ${e.message}</div>`
+      }
+    }
+    
+    // Service selection functions
+    function selectAllServices() {
+      document.getElementById('use_ipqs').checked = true;
+      document.getElementById('use_twilio').checked = true;
+      document.getElementById('use_telesign_api1').checked = true;
+      document.getElementById('use_telesign_api2').checked = true;
+      document.getElementById('use_numverify').checked = true;
+      document.getElementById('use_scam_db').checked = true;
+    }
+
+    function deselectAllServices() {
+      document.getElementById('use_ipqs').checked = false;
+      document.getElementById('use_twilio').checked = false;
+      document.getElementById('use_telesign_api1').checked = false;
+      document.getElementById('use_telesign_api2').checked = false;
+      document.getElementById('use_numverify').checked = false;
+      document.getElementById('use_scam_db').checked = false;
+    }    // === SPAM DATABASE MANAGEMENT FUNCTIONS ===
+    
+    async function loadSpamDatabase() {
+      try {
+        const response = await fetch('/spam-database');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+          displaySpamDatabase(data.numbers);
+          updateStats(data.count);
+        } else {
+          alert('Failed to load database');
+        }
+      } catch (error) {
+        alert('Error loading database: ' + error.message);
+      }
+    }
+    
+    function displaySpamDatabase(numbers) {
+      const container = document.getElementById('spamDatabase');
+      
+      if (numbers.length === 0) {
+        container.innerHTML = '<p>No numbers in database.</p>';
+        return;
+      }
+      
+      let html = `
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #f8f9fa;">
+              <th style="border: 1px solid #ddd; padding: 8px;">Phone Number</th>
+              <th style="border: 1px solid #ddd; padding: 8px;">Category</th>
+              <th style="border: 1px solid #ddd; padding: 8px;">Description</th>
+              <th style="border: 1px solid #ddd; padding: 8px;">Reports</th>
+              <th style="border: 1px solid #ddd; padding: 8px;">Confidence</th>
+              <th style="border: 1px solid #ddd; padding: 8px;">Last Reported</th>
+              <th style="border: 1px solid #ddd; padding: 8px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      
+      numbers.forEach(num => {
+        const categoryColor = {
+          'scam': '#dc3545',
+          'fraud': '#dc3545', 
+          'spam': '#fd7e14',
+          'telemarketing': '#ffc107',
+          'robocall': '#6c757d'
+        }[num.category] || '#6c757d';
+        
+        html += `
+          <tr>
+            <td style="border: 1px solid #ddd; padding: 8px; font-family: monospace;">${num.e164}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">
+              <span style="background: ${categoryColor}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 12px;">
+                ${num.category.toUpperCase()}
+              </span>
+            </td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${num.description || 'N/A'}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${num.reports}</td>
+            <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${num.confidence}%</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">${num.last_reported}</td>
+            <td style="border: 1px solid #ddd; padding: 8px;">
+              <button onclick="editSpamNumber('${num.phone}')" style="background: #007bff; color: white; font-size: 12px; padding: 4px 8px; margin-right: 4px;">Edit</button>
+              <button onclick="deleteSpamNumber('${num.phone}')" style="background: #dc3545; color: white; font-size: 12px; padding: 4px 8px;">Delete</button>
+            </td>
+          </tr>
+        `;
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+    
+    function updateStats(count) {
+      const statsDiv = document.getElementById('dbStats');
+      statsDiv.innerHTML = `
+        <div style="background: #e9ecef; padding: 8px; border-radius: 4px;">
+          <strong>📊 Database Stats:</strong> ${count} spam numbers in database
+        </div>
+      `;
+    }
+    
+    function showAddForm() {
+      document.getElementById('addForm').style.display = 'block';
+    }
+    
+    function hideAddForm() {
+      document.getElementById('addForm').style.display = 'none';
+      // Clear form
+      document.getElementById('newPhone').value = '';
+      document.getElementById('newDescription').value = '';
+      document.getElementById('newCategory').value = 'spam';
+      document.getElementById('newConfidence').value = '50';
+      document.getElementById('confidenceValue').textContent = '50';
+    }
+    
+    async function addSpamNumber() {
+      const phone = document.getElementById('newPhone').value.trim();
+      const category = document.getElementById('newCategory').value;
+      const description = document.getElementById('newDescription').value.trim();
+      const confidence = parseInt(document.getElementById('newConfidence').value);
+      
+      if (!phone) {
+        alert('Please enter a phone number');
+        return;
+      }
+      
+      try {
+        const response = await fetch('/spam-database', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            phone: phone,
+            category: category,
+            description: description,
+            confidence: confidence
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+          alert('Number added successfully!');
+          hideAddForm();
+          loadSpamDatabase(); // Refresh the list
+        } else {
+          alert('Failed to add number: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        alert('Error adding number: ' + error.message);
+      }
+    }
+    
+    async function deleteSpamNumber(phone) {
+      if (!confirm(`Are you sure you want to delete ${phone} from the spam database?`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/spam-database/${phone}`, {
+          method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+          alert('Number deleted successfully!');
+          loadSpamDatabase(); // Refresh the list
+        } else {
+          alert('Failed to delete number: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        alert('Error deleting number: ' + error.message);
+      }
+    }
+    
+    async function editSpamNumber(phone) {
+      const newCategory = prompt('Enter new category (spam, scam, telemarketing, robocall, fraud):');
+      if (!newCategory) return;
+      
+      const newDescription = prompt('Enter new description:');
+      const newConfidence = prompt('Enter confidence level (1-100):');
+      
+      try {
+        const response = await fetch(`/spam-database/${phone}`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            category: newCategory,
+            description: newDescription,
+            confidence: newConfidence ? parseInt(newConfidence) : undefined
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+          alert('Number updated successfully!');
+          loadSpamDatabase(); // Refresh the list
+        } else {
+          alert('Failed to update number: ' + (data.error || 'Unknown error'));
+        }
+      } catch (error) {
+        alert('Error updating number: ' + error.message);
+      }
+    }
+    
+    function refreshStats() {
+      loadSpamDatabase();
+    }
+    
+    // Auto-load spam database on page load
+    window.addEventListener('load', function() {
+      loadSpamDatabase();
+    });
+  </script>
+  
+  <hr />
+  <small>Privacy: numbers are normalized and used to query third-party providers. Reports are stored in-memory for demo purposes. Do not use this service to store PII in production.</small>
+</body>
+</html>

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CipherCop Security Scanner</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="popup-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <div class="shield-icon">🛡️</div>
+                <div class="logo-text">
+                    <h1>CipherCop</h1>
+                    <span>Security Scanner</span>
+                </div>
+            </div>
+            <div class="status-indicator" id="statusIndicator">
+                <div class="status-dot"></div>
+            </div>
+        </div>
+
+        <!-- Current Site Info -->
+        <div class="site-info" id="siteInfo">
+            <div class="site-icon" id="siteIcon">🌐</div>
+            <div class="site-details">
+                <div class="site-url" id="siteUrl">Loading...</div>
+                <div class="site-title" id="siteTitle">Please wait...</div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <button class="action-btn clone-btn" id="cloneBtn">
+                <div class="btn-icon">🔍</div>
+                <div class="btn-content">
+                    <div class="btn-title">Check Clone Score</div>
+                    <div class="btn-subtitle">Detect website cloning</div>
+                </div>
+                <div class="btn-arrow">→</div>
+            </button>
+
+            <button class="action-btn phishing-btn" id="phishingBtn">
+                <div class="btn-icon">⚠️</div>
+                <div class="btn-content">
+                    <div class="btn-title">Phishing Analysis</div>
+                    <div class="btn-subtitle">Verify site legitimacy</div>
+                </div>
+                <div class="btn-arrow">→</div>
+            </button>
+        </div>
+
+        <!-- Loading State -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text" id="loadingText">Analyzing website...</div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection">
+            <div class="results-header">
+                <h3 id="resultsTitle">Analysis Results</h3>
+                <button class="close-results" id="closeResults">×</button>
+            </div>
+            
+            <div class="threat-level" id="threatLevel">
+                <div class="threat-icon" id="threatIcon">🟢</div>
+                <div class="threat-info">
+                    <div class="threat-status" id="threatStatus">Safe</div>
+                    <div class="threat-confidence" id="threatConfidence">Confidence: 95%</div>
+                </div>
+            </div>
+
+            <div class="results-details" id="resultsDetails">
+                <!-- Results will be populated here -->
+            </div>
+
+            <div class="results-actions">
+                <button class="secondary-btn" id="viewDetailsBtn">View Details</button>
+                <button class="secondary-btn" id="reportBtn">Report Issue</button>
+            </div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="quick-stats" id="quickStats">
+            <div class="stat-item">
+                <div class="stat-number" id="totalScans">0</div>
+                <div class="stat-label">Total Scans</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="threatsBlocked">0</div>
+                <div class="stat-label">Threats Blocked</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="protectionLevel">99%</div>
+                <div class="stat-label">Protection</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-links">
+                <button class="footer-btn" id="settingsBtn">Settings</button>
+                <button class="footer-btn" id="historyBtn">History</button>
+                <button class="footer-btn" id="helpBtn">Help</button>
+            </div>
+            <div class="version">v1.0.0</div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="settings-panel" id="settingsPanel">
+            <div class="settings-header">
+                <h3>Settings</h3>
+                <button class="close-settings" id="closeSettings">×</button>
+            </div>
+            <div class="settings-content">
+                <div class="setting-item">
+                    <label class="setting-label">
+                        <input type="checkbox" id="autoScanEnabled" checked>
+                        <span class="checkmark"></span>
+                        Enable automatic scanning
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">
+                        <input type="checkbox" id="notificationsEnabled" checked>
+                        <span class="checkmark"></span>
+                        Show notifications
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">Protection Level:</label>
+                    <select id="protectionLevelSelect">
+                        <option value="basic">Basic</option>
+                        <option value="standard" selected>Standard</option>
+                        <option value="advanced">Advanced</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

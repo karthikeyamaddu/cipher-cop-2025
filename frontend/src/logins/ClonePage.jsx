@@ -67,7 +67,7 @@ const ClonePage = () => {
     return data;
   };
 
-  // Helper function to normalize AI response data structure
+  // Helper function to normalize AI response data structure  
   const normalizeAiResponse = (data) => {
     return {
       decision: data.decision,
@@ -78,6 +78,28 @@ const ClonePage = () => {
     };
   };
 
+  // Helper function to extract ML data from integrated AI response
+  const extractMlFromAiResponse = (aiData) => {
+    const mlData = aiData.signals?.ml_phishpedia;
+    if (!mlData) {
+      return {
+        result: 'Unknown',
+        matched_brand: 'unknown',
+        confidence: 0,
+        correct_domain: 'unknown',
+        detection_time: '0.00'
+      };
+    }
+
+    return {
+      result: mlData.result || 'Unknown',
+      matched_brand: mlData.matched_brand || mlData.brand || 'unknown', 
+      confidence: mlData.confidence || 0,
+      correct_domain: mlData.correct_domain || 'unknown',
+      detection_time: mlData.detection_time || '0.00'
+    };
+  };
+
   // Main function to call both ML and AI services
   const callBothServices = async (url, imageFile) => {
     const results = {
@@ -85,9 +107,9 @@ const ClonePage = () => {
       ai: { status: 'pending', data: null, error: null }
     };
 
-    // STEP 1: Call AI Service (Gemini) FIRST to take screenshot and analyze
+    // Call AI Service (now includes integrated ML analysis)
     try {
-      console.log('Calling AI Service first...');
+      console.log('Calling integrated AI+ML service...');
       
       let aiResponse;
       if (imageFile) {
@@ -103,7 +125,7 @@ const ClonePage = () => {
           body: formData
         });
       } else {
-        // Case 2: URL-only - AI will take screenshot and save it
+        // Case 2: URL-only - AI will take screenshot and run both AI+ML analysis
         aiResponse = await fetch(API_ENDPOINTS.ai, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -113,138 +135,37 @@ const ClonePage = () => {
 
       if (aiResponse.ok) {
         const rawData = await aiResponse.json();
-        console.log('AI Raw Response:', rawData);
+        console.log('AI+ML Integrated Response:', rawData);
+        
+        // Extract AI results
         results.ai.data = normalizeAiResponse(rawData);
         results.ai.status = 'completed';
+        
+        // Extract ML results from integrated response
+        const mlData = extractMlFromAiResponse(rawData);
+        results.ml.data = mlData;
+        results.ml.status = rawData.signals?.ml_phishpedia?.status === 'success' ? 'completed' : 
+                           rawData.signals?.ml_phishpedia?.error ? 'failed' : 'completed';
+        
+        if (rawData.signals?.ml_phishpedia?.error) {
+          results.ml.error = rawData.signals.ml_phishpedia.error;
+        }
+        
         console.log('AI Service completed successfully');
+        console.log('ML Service results extracted from AI response');
       } else {
         const errorData = await aiResponse.json();
         results.ai.error = errorData.error || `HTTP ${aiResponse.status}`;
         results.ai.status = 'failed';
+        results.ml.error = 'AI service failed - ML analysis not available';
+        results.ml.status = 'failed';
       }
     } catch (error) {
       results.ai.error = error.message;
       results.ai.status = 'failed';
-      console.log('AI Service failed:', error.message);
-    }
-
-    // STEP 2: Call ML Service (Phishpedia) SECOND
-    try {
-      console.log('Calling ML Service...');
-      
-      if (imageFile) {
-        // Case 1: User uploaded screenshot - use existing flow
-        console.log('Using user uploaded screenshot for ML...');
-        
-        // Step 1: Upload the user's image
-        const uploadFormData = new FormData();
-        uploadFormData.append('image', imageFile);
-        
-        const uploadResponse = await fetch(API_ENDPOINTS.ml.upload, {
-          method: 'POST',
-          body: uploadFormData
-        });
-        
-        if (!uploadResponse.ok) {
-          throw new Error(`Upload failed: HTTP ${uploadResponse.status}`);
-        }
-        
-        const uploadData = await uploadResponse.json();
-        if (!uploadData.success) {
-          throw new Error(uploadData.error || 'Image upload failed');
-        }
-        
-        // Step 2: Call detect with the uploaded image URL
-        const detectResponse = await fetch(API_ENDPOINTS.ml.detect, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            url: url || '',
-            imageUrl: uploadData.imageUrl
-          })
-        });
-
-        if (detectResponse.ok) {
-          const rawData = await detectResponse.json();
-          console.log('ML Raw Response:', rawData);
-          results.ml.data = normalizeMlResponse(rawData);
-          results.ml.status = 'completed';
-          console.log('ML Service completed successfully with user screenshot');
-        } else {
-          const errorData = await detectResponse.json();
-          results.ml.error = errorData.error || `HTTP ${detectResponse.status}`;
-          results.ml.status = 'failed';
-        }
-      } else if (results.ai.status === 'completed') {
-        // Case 2: URL-only - AI has taken screenshot, now use it for ML
-        console.log('AI completed successfully, now using AI screenshot for ML...');
-        
-        try {
-          // Fetch the screenshot saved by AI service
-          const screenshotResponse = await fetch('http://localhost:5003/get-screenshot', {
-            method: 'GET'
-          });
-          
-          if (screenshotResponse.ok) {
-            const screenshotBlob = await screenshotResponse.blob();
-            console.log('Retrieved AI screenshot, size:', screenshotBlob.size);
-            
-            // Step 1: Upload the AI-generated screenshot to ML service
-            const uploadFormData = new FormData();
-            uploadFormData.append('image', screenshotBlob, 'ai-screenshot.png');
-            
-            const uploadResponse = await fetch(API_ENDPOINTS.ml.upload, {
-              method: 'POST',
-              body: uploadFormData
-            });
-            
-            if (!uploadResponse.ok) {
-              throw new Error(`AI screenshot upload failed: HTTP ${uploadResponse.status}`);
-            }
-            
-            const uploadData = await uploadResponse.json();
-            if (!uploadData.success) {
-              throw new Error(uploadData.error || 'AI screenshot upload failed');
-            }
-            
-            // Step 2: Call detect with the uploaded AI screenshot URL
-            const detectResponse = await fetch(API_ENDPOINTS.ml.detect, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                url: url || '',
-                imageUrl: uploadData.imageUrl
-              })
-            });
-
-            if (detectResponse.ok) {
-              const rawData = await detectResponse.json();
-              console.log('ML Raw Response:', rawData);
-              results.ml.data = normalizeMlResponse(rawData);
-              results.ml.status = 'completed';
-              console.log('ML Service completed successfully with AI screenshot');
-            } else {
-              const errorData = await detectResponse.json();
-              results.ml.error = errorData.error || `HTTP ${detectResponse.status}`;
-              results.ml.status = 'failed';
-            }
-          } else {
-            throw new Error(`Failed to retrieve AI screenshot: HTTP ${screenshotResponse.status}`);
-          }
-        } catch (screenshotError) {
-          console.log('Failed to get AI screenshot:', screenshotError.message);
-          results.ml.error = `Failed to use AI screenshot: ${screenshotError.message}`;
-          results.ml.status = 'failed';
-        }
-      } else {
-        // AI failed, so we can't get screenshot for ML
-        results.ml.error = 'AI service failed - no screenshot available for ML analysis';
-        results.ml.status = 'failed';
-      }
-    } catch (error) {
-      results.ml.error = error.message;
+      results.ml.error = 'AI service failed - ML analysis not available';  
       results.ml.status = 'failed';
-      console.log('ML Service failed:', error.message);
+      console.log('AI+ML Service failed:', error.message);
     }
 
     return results;

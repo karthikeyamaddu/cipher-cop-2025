@@ -4,6 +4,7 @@ import time
 import hashlib
 import json
 import re
+import requests
 from pathlib import Path
 from typing import Optional, Tuple
 from flask import Flask, request, jsonify, render_template
@@ -40,6 +41,111 @@ print(f"[DEBUG] Loaded {len(CFG.brands)} brands from config: {[b['name'] for b i
 
 OUT_DIR = ROOT / "_artifacts"
 OUT_DIR.mkdir(exist_ok=True)
+
+# -------------------------
+# ML Service Integration
+# -------------------------
+def call_ml_service(screenshot_path: Path, url: str) -> dict:
+    """
+    Call the ML service (Phishpedia) for clone detection analysis.
+    Returns ML analysis results or error info.
+    """
+    ml_service_url = "http://localhost:5000"
+    
+    try:
+        # Step 1: Upload screenshot to ML service
+        print(f"[ML] Uploading screenshot to Phishpedia...")
+        
+        with open(screenshot_path, 'rb') as f:
+            files = {'image': f}
+            upload_response = requests.post(
+                f"{ml_service_url}/upload",
+                files=files,
+                timeout=30
+            )
+        
+        if upload_response.status_code != 200:
+            raise Exception(f"Upload failed: {upload_response.status_code}")
+        
+        upload_data = upload_response.json()
+        if not upload_data.get("success"):
+            raise Exception(f"Upload failed: {upload_data.get('error', 'Unknown error')}")
+        
+        image_url = upload_data.get("imageUrl")
+        print(f"[ML] Running Phishpedia detection...")
+        
+        # Step 2: Call detect endpoint with URL and uploaded image
+        detect_payload = {
+            "url": url,
+            "imageUrl": image_url
+        }
+        
+        detect_response = requests.post(
+            f"{ml_service_url}/detect",
+            json=detect_payload,
+            timeout=60  # ML analysis can take longer
+        )
+        
+        if detect_response.status_code != 200:
+            raise Exception(f"Detection failed: {detect_response.status_code}")
+        
+        ml_results = detect_response.json()
+        
+        # Debug: Print what we actually received from ML service
+        # print(f"[ML] Raw ML response: {ml_results}")
+        print(f"[ML] matched_brand field: {ml_results.get('matched_brand')}")
+        print(f"[ML] pred_target field: {ml_results.get('pred_target')}")
+        print(f"[ML] brand field: {ml_results.get('brand')}")
+        
+        # Clean up the verbose logo_extraction from output to avoid spam
+        if 'logo_extraction' in ml_results and len(str(ml_results['logo_extraction'])) > 100:
+            ml_results['logo_extraction'] = f"[Base64 image data - {len(str(ml_results['logo_extraction']))} chars]"
+        
+        extracted_brand = ml_results.get("matched_brand") or ml_results.get("pred_target") or ml_results.get("brand") or "unknown"
+        print(f"[ML] Phishpedia result: {ml_results.get('result', 'Unknown')} (confidence: {ml_results.get('confidence', 0):.2f}) (brand: {extracted_brand})")
+        
+        # Step 3: Clean up uploaded file (optional)
+        try:
+            cleanup_payload = {"imageUrl": image_url}
+            requests.post(f"{ml_service_url}/clear_upload", json=cleanup_payload, timeout=10)
+        except:
+            pass  # Cleanup failure is not critical
+        
+        return {
+            "status": "success",
+            "result": ml_results.get("result", "Unknown"),
+            "matched_brand": ml_results.get("matched_brand") or ml_results.get("pred_target") or ml_results.get("brand") or "unknown",
+            "confidence": ml_results.get("confidence", 0.0),
+            "correct_domain": ml_results.get("correct_domain", "unknown"),
+            "detection_time": ml_results.get("detection_time", "0.00"),
+            "logo_extraction": ml_results.get("logo_extraction", ""),
+            "full_results": ml_results
+        }
+        
+    except requests.exceptions.ConnectionError:
+        return {
+            "status": "error",
+            "error": "ML service not available (port 5000)",
+            "result": "Unknown",
+            "matched_brand": "unknown",
+            "confidence": 0.0
+        }
+    except requests.exceptions.Timeout:
+        return {
+            "status": "error", 
+            "error": "ML service timeout",
+            "result": "Unknown",
+            "matched_brand": "unknown",
+            "confidence": 0.0
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": f"ML service error: {str(e)}",
+            "result": "Unknown", 
+            "matched_brand": "unknown",
+            "confidence": 0.0
+        }
 
 # -------------------------
 # Cache system removed for fresh analysis every time
@@ -175,28 +281,6 @@ def analyze_options():
     """Handle preflight OPTIONS requests"""
     return "", 200
 
-@app.route("/get-screenshot", methods=["GET"])
-def get_screenshot():
-    """Serve the viewport screenshot (shot2.png) for ML analysis"""
-    try:
-        # Use shot2.png (viewport) for ML analysis - smaller and more manageable
-        shot2_path = OUT_DIR / "shot2.png"
-        if shot2_path.exists():
-            from flask import send_file
-            print(f"[DEBUG] Serving viewport screenshot for ML: {shot2_path}")
-            return send_file(str(shot2_path), mimetype='image/png')
-        else:
-            # Fallback to original shot.png if shot2.png doesn't exist
-            shot_path = OUT_DIR / "shot.png"
-            if shot_path.exists():
-                from flask import send_file
-                print(f"[DEBUG] Serving fallback screenshot for ML: {shot_path}")
-                return send_file(str(shot_path), mimetype='image/png')
-            else:
-                return jsonify({"error": "No screenshot found"}), 404
-    except Exception as e:
-        return jsonify({"error": f"Failed to serve screenshot: {e}"}), 500
-
 @app.route("/analyze", methods=["POST"])
 def analyze():
     url = None
@@ -284,11 +368,35 @@ def analyze():
     if image_bytes:
         try:
             vision = analyze_image(image_bytes)
-            print(f"Vision AI analysis completed: {len(vision.get('logos', []))} logos detected")
+            print(f"[Vision AI] Analysis completed: {len(vision.get('logos', []))} brands detected")
         except Exception as e:
             vision_error = f"Vision analysis failed: {e}"
             vision = {"error": vision_error, "logos": [], "text": ""}
-            print(f"Vision AI error: {e}")
+            print(f"[Vision AI] Error: {e}")
+
+    # ML Service Integration (Phishpedia) - Run in parallel with AI analysis
+    ml_results = {"status": "skipped", "result": "Unknown", "matched_brand": "unknown", "confidence": 0.0}
+    
+    # Call ML service if we have a screenshot and URL
+    if image_bytes and url:
+        # Use shot2.png (viewport) for ML analysis - it's smaller and better for detection
+        shot2_path = OUT_DIR / "shot2.png"
+        if shot2_path.exists():
+            print("[AI+ML] Starting ML service analysis...")
+            ml_results = call_ml_service(shot2_path, url)
+        elif (OUT_DIR / "shot.png").exists():
+            # Fallback to original shot.png
+            print("[AI+ML] Using fallback screenshot for ML...")
+            ml_results = call_ml_service(OUT_DIR / "shot.png", url)
+        else:
+            ml_results = {
+                "status": "error",
+                "error": "No screenshot available for ML analysis",
+                "result": "Unknown",
+                "matched_brand": "unknown", 
+                "confidence": 0.0
+            }
+            print("[AI+ML] No screenshot found for ML analysis")
 
     # Brand detection (top logo from Vision)
     detected_brand = ""
@@ -588,6 +696,20 @@ def analyze():
                     "pattern_details": list(heur.get("signals", {}).keys())
                 },
                 "full_results": heur
+            },
+            
+            "stage_e_ml_phishpedia": {
+                "name": "ML Analysis (Phishpedia)",
+                "status": ml_results.get("status", "unknown"),
+                "key_findings": {
+                    "result": ml_results.get("result", "Unknown"),
+                    "matched_brand": ml_results.get("matched_brand", "unknown"),
+                    "confidence": ml_results.get("confidence", 0.0),
+                    "correct_domain": ml_results.get("correct_domain", "unknown"),
+                    "detection_time": ml_results.get("detection_time", "0.00"),
+                    "has_logo_extraction": bool(ml_results.get("logo_extraction"))
+                },
+                "full_results": ml_results
             }
         },
         
@@ -597,6 +719,7 @@ def analyze():
             "vision": {k: v for k, v in vision.items() if k != "error"},
             "gemini": gem,
             "enhanced_gemini": enhanced_gem,
+            "ml_phishpedia": ml_results,
             "brand_mismatch": {
                 "brand": brand_for_mismatch,
                 "allowed_domains": allowed_domains,
@@ -617,7 +740,8 @@ def analyze():
             k: v for k, v in {
                 "vision": vision_error or vision.get("error"),
                 "gemini": gem.get("error") if gem.get("error") else None,
-                "enhanced_gemini": enhanced_gem.get("error") if enhanced_gem.get("error") else None
+                "enhanced_gemini": enhanced_gem.get("error") if enhanced_gem.get("error") else None,
+                "ml_phishpedia": ml_results.get("error") if ml_results.get("error") else None
             }.items() if v
         }
     }

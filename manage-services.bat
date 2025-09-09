@@ -56,6 +56,14 @@ start "Malware-Virus (5004)" cmd /c ""D:\volume E\ciphercop-2025\overall\cipherc
 cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend_py\malware-detection\ml-detection\ML_based_detectionn"
 start "Malware-ML (5002)" cmd /c "..\.venv\Scripts\python.exe app.py"
 
+:: ---- MALWARE SANDBOX (5005) ----
+cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend_py\malware-detection"
+start "Malware-Sandbox (5005)" cmd /c "python sandbox.py"
+
+:: ---- PHONE SCAM DETECTION (5006) ----
+cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend_py\phone-number-detection"
+start "Phone-Scam (5006)" cmd /c ".venv\Scripts\activate && .venv\Scripts\python.exe app.py"
+
 echo.
 echo All services are starting. Please wait a few seconds...
 pause
@@ -75,6 +83,8 @@ taskkill /FI "WINDOWTITLE eq Clone-AI (5003)*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Clone-ML (5000)*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Malware-Virus (5004)*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Malware-ML (5002)*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Malware-Sandbox (5005)*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Phone-Scam (5006)*" /F >nul 2>&1
 
 echo Services stopped.
 if "%choice%"=="2" (
@@ -92,7 +102,7 @@ echo.
 echo [*] Checking service status...
 echo.
 
-for %%p in (5173 5001 5003 5000 5004 5002) do (
+for %%p in (5173 5001 5003 5000 5004 5002 5005 5006) do (
     netstat -an | findstr ":%%p" | findstr "LISTENING" >nul
     if !errorlevel! == 0 (
         echo ✅ Service on port %%p: RUNNING
