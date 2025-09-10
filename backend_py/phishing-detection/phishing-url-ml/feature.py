@@ -1,7 +1,7 @@
 import ipaddress
 import re
 import urllib.request
-from urllib import response
+from urllib.parse import urlparse
 
 #from Demos.win32cred_demo import domain
 from bs4 import BeautifulSoup
@@ -12,9 +12,6 @@ import whois
 from datetime import date, datetime
 import time
 from dateutil.parser import parse as date_parse
-from urllib.parse import urlparse
-
-from urllib3.util import url
 
 
 class FeatureExtraction:
@@ -31,7 +28,7 @@ class FeatureExtraction:
 
         try:
             self.response = requests.get(url)
-            self.soup = BeautifulSoup(response.text, 'html.parser')
+            self.soup = BeautifulSoup(self.response.text, 'html.parser')
         except:
             pass
 

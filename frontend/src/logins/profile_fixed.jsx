@@ -274,7 +274,7 @@ const ProfilePage = () => {
               <span className="status-text">SECURE</span>
             </div>
             <button className="logout-btn" onClick={handleLogout}>
-              <span> </span> Logout
+              <span>🔓</span> Logout
             </button>
           </div>
         </div>
@@ -286,14 +286,14 @@ const ProfilePage = () => {
         <div className="content-card profile-card">
           <div className="card-header">
             <h2 className="card-title">
-              <span className="title-icon"> </span>
+              <span className="title-icon">🔐</span>
               Operative Profile Configuration
             </h2>
             <button 
               className={`action-btn ${isEditing ? 'save-btn' : 'edit-btn'}`}
               onClick={isEditing ? handleSave : () => setIsEditing(true)}
             >
-                            {isEditing ? '💾 Secure Changes' : '⚙️ Modify Profile'}
+              {isEditing ? '💾 Secure Changes' : '⚙️ Modify Profile'}
             </button>
           </div>
           
@@ -311,7 +311,7 @@ const ProfilePage = () => {
                 />
               </div>
               <div className="form-group">
-                <label>  Secure Contact</label>
+                <label>📧 Secure Contact</label>
                 <input
                   type="email"
                   value={editableUser.email || ''}
@@ -371,7 +371,7 @@ const ProfilePage = () => {
         <div className="content-card stats-card">
           <div className="card-header">
             <h2 className="card-title">
-              <span className="title-icon"> ️</span>
+              <span className="title-icon">🛡️</span>
               Threat Intelligence Dashboard
             </h2>
             <div className="card-subtitle">
@@ -407,12 +407,12 @@ const ProfilePage = () => {
               </div>
 
               <div className="stat-item phishing-tests">
-                <div className="stat-icon">⚡</div>
+                <div className="stat-icon">🎯</div>
                 <div className="stat-content">
                   <div className="stat-number">{userStats?.phishingTests || 0}</div>
                   <div className="stat-label">Phishing Detected</div>
                 </div>
-                <div className="stat-trend"> </div>
+                <div className="stat-trend">⚡</div>
               </div>
 
               <div className="stat-item malware-tests">
@@ -439,7 +439,7 @@ const ProfilePage = () => {
                   <div className="stat-number">{userStats?.sandboxTests || 0}</div>
                   <div className="stat-label">AI Sandbox Analysis</div>
                 </div>
-                <div className="stat-trend"> </div>
+                <div className="stat-trend">🤖</div>
               </div>
             </div>
           )}
@@ -449,7 +449,7 @@ const ProfilePage = () => {
         <div className="content-card recent-tests-card">
           <div className="card-header">
             <h2 className="card-title">
-              <span className="title-icon"> </span>
+              <span className="title-icon">📊</span>
               Mission Activity Log
             </h2>
             <div className="card-subtitle">
@@ -531,7 +531,11 @@ const ProfilePage = () => {
           background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 25%, #16213e 60%, #0f3460 100%);
           color: #e2e8f0;
           padding: 20px;
-          position: relative;
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
           overflow-x: hidden;
           overflow-y: auto;
           font-family: 'Inter', 'Arial', sans-serif;
@@ -557,7 +561,7 @@ const ProfilePage = () => {
         }
 
         .bg-effects {
-          position: absolute;
+          position: fixed;
           top: 0;
           left: 0;
           right: 0;
@@ -1039,6 +1043,23 @@ const ProfilePage = () => {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
           gap: 20px;
+          max-height: 400px;
+          overflow-y: auto;
+          padding-right: 10px;
+        }
+
+        .stats-grid::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .stats-grid::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 3px;
+        }
+
+        .stats-grid::-webkit-scrollbar-thumb {
+          background: linear-gradient(135deg, #00d4ff, #00ff88);
+          border-radius: 3px;
         }
 
         .stat-item {
@@ -1114,7 +1135,7 @@ const ProfilePage = () => {
           display: flex;
           flex-direction: column;
           gap: 16px;
-          max-height: 600px;
+          max-height: 400px;
           overflow-y: auto;
           padding-right: 8px;
         }
