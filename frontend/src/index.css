@@ -1339,26 +1339,26 @@ html, body {
     cursor: not-allowed;
   }
 
-  /* Enhanced Technical Details Section */
+  /* Enhanced Technical Details Section - AI/ML Cybersecurity Theme */
   .technical-details-section {
-    margin-top: 24px;
-    padding: 20px;
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.7));
-    border: 1px solid rgba(59, 130, 246, 0.3);
-    border-radius: 12px;
+    margin-top: 16px;
+    padding: 12px;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(16, 185, 129, 0.02), rgba(30, 41, 59, 0.8));
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: 8px;
     position: relative;
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(20px);
     box-shadow: 
-      0 8px 16px rgba(0, 0, 0, 0.2),
-      0 4px 8px rgba(0, 0, 0, 0.1),
-      inset 0 1px 0 rgba(59, 130, 246, 0.1);
+      0 4px 8px rgba(0, 0, 0, 0.15),
+      0 2px 4px rgba(16, 185, 129, 0.1),
+      inset 0 1px 0 rgba(16, 185, 129, 0.1);
     overflow: hidden;
   }
 
   @media (max-width: 768px) {
     .technical-details-section {
-      margin-top: 20px;
-      padding: 16px;
+      margin-top: 14px;
+      padding: 10px;
     }
   }
 
@@ -1368,35 +1368,35 @@ html, body {
     top: 0;
     left: 0;
     right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.6), rgba(59, 130, 246, 0.3), transparent);
   }
 
   .technical-details-section::after {
     content: '';
     position: absolute;
-    top: -32px;
-    left: -32px;
-    width: 64px;
-    height: 64px;
-    background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+    top: -16px;
+    right: -16px;
+    width: 32px;
+    height: 32px;
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.1) 0%, transparent 70%);
     border-radius: 50%;
-    filter: blur(16px);
+    filter: blur(8px);
   }
 
   .details-toggle-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
-    padding: 12px 20px;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(37, 99, 235, 0.1));
-    border: 1px solid rgba(59, 130, 246, 0.4);
-    border-radius: 10px;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(59, 130, 246, 0.08));
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 6px;
     color: #e2e8f0;
     font-weight: 600;
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     cursor: pointer;
@@ -1404,22 +1404,22 @@ html, body {
     position: relative;
     z-index: 10;
     backdrop-filter: blur(8px);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.1);
   }
 
   @media (max-width: 768px) {
     .details-toggle-btn {
-      padding: 10px 16px;
-      font-size: 0.75rem;
-      gap: 8px;
+      padding: 8px 12px;
+      font-size: 0.6875rem;
+      gap: 6px;
     }
   }
 
   .details-toggle-btn:hover {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.15));
-    border-color: rgba(59, 130, 246, 0.6);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(59, 130, 246, 0.12));
+    border-color: rgba(16, 185, 129, 0.5);
+    transform: translateY(-0.5px);
+    box-shadow: 0 4px 10px rgba(16, 185, 129, 0.15);
   }
 
   .toggle-icon {
@@ -1435,100 +1435,117 @@ html, body {
   }
 
   .technical-details {
-    margin-top: 16px;
-    padding: 20px;
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.6));
-    border: 1px solid rgba(59, 130, 246, 0.2);
-    border-radius: 10px;
+    margin-top: 8px;
+    padding: 10px;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(16, 185, 129, 0.02), rgba(30, 41, 59, 0.7));
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 5px;
     animation: fadeInUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     z-index: 10;
-    backdrop-filter: blur(8px);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    box-shadow: inset 0 1px 0 rgba(16, 185, 129, 0.05);
   }
 
   @media (max-width: 768px) {
     .technical-details {
-      padding: 16px;
-      margin-top: 12px;
+      padding: 8px;
+      margin-top: 6px;
     }
   }
 
   .technical-details h5 {
-    color: #60a5fa;
-    margin-bottom: 16px;
-    font-size: 1rem;
+    color: #10b981;
+    margin-bottom: 10px;
+    font-size: 0.8125rem;
     font-weight: 700;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    padding-bottom: 12px;
-    border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(16, 185, 129, 0.2);
   }
 
   @media (max-width: 768px) {
     .technical-details h5 {
-      font-size: 0.9375rem;
-      margin-bottom: 14px;
-      gap: 6px;
-      padding-bottom: 10px;
+      font-size: 0.75rem;
+      margin-bottom: 8px;
+      gap: 4px;
+      padding-bottom: 4px;
     }
   }
 
   .features-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 12px;
-    margin-top: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 1px;
+    margin-top: 8px;
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 1400px) {
     .features-grid {
-      grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 1px;
     }
   }
 
-  @media (max-width: 768px) {
+  @media (min-width: 1200px) and (max-width: 1399px) {
     .features-grid {
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
+      grid-template-columns: repeat(9, 1fr);
+      gap: 1px;
     }
   }
 
-  @media (max-width: 480px) {
+  @media (min-width: 1024px) and (max-width: 1199px) {
     .features-grid {
-      grid-template-columns: 1fr;
-      gap: 8px;
-      margin-top: 16px;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 1px;
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .features-grid {
+      grid-template-columns: repeat(6, 1fr);
+      gap: 1px;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .features-grid {
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0px;
+      margin-top: 6px;
     }
   }
 
   .feature-item {
     display: flex;
-    flex-direction: row;
-    justify-content: space-between;
+    flex-direction: column;
+    justify-content: center;
     align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(139, 92, 246, 0.04));
-    border: 1px solid rgba(59, 130, 246, 0.2);
-    border-radius: 8px;
-    transition: all 0.2s ease;
+    gap: 0px;
+    padding: 0.5px 1px;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.04), rgba(16, 185, 129, 0.02));
+    border: 0.125px solid rgba(59, 130, 246, 0.1);
+    border-radius: 1px;
+    transition: all 0.1s ease;
     position: relative;
     overflow: hidden;
-    backdrop-filter: blur(8px);
-    min-height: 60px;
+    backdrop-filter: blur(2px);
+    min-height: 14px;
+    max-height: 16px;
+    text-align: center;
+    box-shadow: inset 0 0.125px 0 rgba(255, 255, 255, 0.02);
   }
 
-  @media (max-width: 480px) {
+  @media (max-width: 767px) {
     .feature-item {
-      flex-direction: column;
-      gap: 8px;
-      min-height: 70px;
-      padding: 10px 12px;
+      min-height: 12px;
+      max-height: 14px;
+      padding: 0.25px 0.5px;
+      gap: 0px;
     }
   }
 
@@ -1537,54 +1554,70 @@ html, body {
     position: absolute;
     top: 0;
     left: 0;
-    width: 3px;
-    height: 100%;
-    background: linear-gradient(180deg, #3b82f6, #1e40af);
-    border-radius: 0 2px 2px 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.4), rgba(59, 130, 246, 0.4), transparent);
+    opacity: 0.7;
   }
 
   .feature-item:hover {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(139, 92, 246, 0.06));
-    border-color: rgba(59, 130, 246, 0.4);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(16, 185, 129, 0.03));
+    border-color: rgba(16, 185, 129, 0.2);
+    transform: translateY(-0.125px) scale(1.005);
+    box-shadow: 
+      0 0.5px 1px rgba(59, 130, 246, 0.08),
+      inset 0 0.25px 0 rgba(255, 255, 255, 0.05);
   }
 
   .feature-name {
     font-weight: 500;
-    color: #e2e8f0;
-    font-size: 0.8125rem;
+    color: #cbd5e1;
+    font-size: 0.375rem;
     text-transform: capitalize;
-    flex: 1;
-    line-height: 1.3;
-    text-align: left;
+    line-height: 0.8;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    letter-spacing: 0em;
   }
 
-  @media (max-width: 480px) {
+  @media (max-width: 767px) {
     .feature-name {
-      text-align: center;
-      font-size: 0.75rem;
+      font-size: 0.3125rem;
+      line-height: 0.7;
     }
   }
 
   .feature-value {
-    font-weight: 600;
-    color: #60a5fa;
-    font-size: 0.8125rem;
-    padding: 4px 10px;
-    background: rgba(59, 130, 246, 0.15);
-    border-radius: 6px;
-    border: 1px solid rgba(59, 130, 246, 0.25);
-    backdrop-filter: blur(4px);
-    min-width: fit-content;
+    font-weight: 700;
+    color: #10b981;
+    font-size: 0.375rem;
+    padding: 0px 0.5px;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.08), rgba(59, 130, 246, 0.04));
+    border-radius: 0.5px;
+    border: 0.0625px solid rgba(16, 185, 129, 0.15);
+    backdrop-filter: blur(0.5px);
     text-align: center;
     white-space: nowrap;
+    min-width: fit-content;
+    text-shadow: 0 0 1px rgba(16, 185, 129, 0.15);
+    box-shadow: inset 0 0.125px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  @media (max-width: 767px) {
+    .feature-value {
+      font-size: 0.3125rem;
+      padding: 0px 0.25px;
+    }
+  }
   }
 
   @media (max-width: 480px) {
     .feature-value {
-      font-size: 0.75rem;
-      padding: 3px 8px;
+      font-size: 0.5625rem;
+      padding: 1px 3px;
     }
   }
 
@@ -1658,4 +1691,3 @@ html, body {
     border-color: rgba(239, 68, 68, 0.3);
     transform: translateX(4px);
   }
-}

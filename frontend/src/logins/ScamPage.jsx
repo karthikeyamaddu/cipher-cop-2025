@@ -91,10 +91,10 @@ const ScamPage = () => {
   };
 
   const stats = [
-    { icon: Shield, label: 'Scams Blocked', value: '890K+', color: 'text-green-400' },
-    { icon: DollarSign, label: 'Money Saved', value: '$45M+', color: 'text-blue-400' },
-    { icon: Users, label: 'Protected Users', value: '2.1M+', color: 'text-purple-400' },
-    { icon: TrendingUp, label: 'Detection Rate', value: '96.8%', color: 'text-yellow-400' }
+    { icon: Shield, label: 'Scams Blocked', value: '8K+', color: 'text-green-400' },
+    { icon: DollarSign, label: 'Money Saved', value: '10K+', color: 'text-blue-400' },
+    { icon: Users, label: 'Protected Users', value: '2k+', color: 'text-purple-400' },
+    { icon: TrendingUp, label: 'Detection Rate', value: '96%', color: 'text-yellow-400' }
   ];
 
   const recentScams = [

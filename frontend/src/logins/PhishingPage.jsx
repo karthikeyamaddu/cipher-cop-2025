@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, Mail, Link, Shield, Search, FileText, Activity, TrendingUp, Users, CheckCircle, ChevronDown, Settings, Eye } from 'lucide-react';
-import MLPhishingDetection from '../components/MLPhishingDetection';
+import { AlertTriangle, Mail, Link, Shield, Search, FileText, Activity, TrendingUp, Users, CheckCircle, ChevronDown, Settings, Eye, Brain } from 'lucide-react';
 
 
 const PhishingPage = () => {
@@ -9,6 +8,7 @@ const PhishingPage = () => {
   const [scanResult, setScanResult] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
   const [showFeatures, setShowFeatures] = useState(false);
+  const [scanProgress, setScanProgress] = useState({ step: '', progress: 0 });
   
   // Additional email fields
   const [showAdditionalInfo, setShowAdditionalInfo] = useState(false);
@@ -23,8 +23,12 @@ const PhishingPage = () => {
     if (!url) return;
     setIsScanning(true);
     setScanResult(null);
+    setScanProgress({ step: 'Initializing WHOIS + Gemini Analysis...', progress: 20 });
     
     try {
+      // WHOIS + Gemini Analysis Only
+      setScanProgress({ step: 'Running WHOIS + Gemini Analysis...', progress: 60 });
+      
       const response = await fetch('http://localhost:5001/api/phishing/analyze', {
         method: 'POST',
         headers: {
@@ -36,11 +40,32 @@ const PhishingPage = () => {
 
       const data = await response.json();
       
+      setScanProgress({ step: 'Finalizing Results...', progress: 90 });
+      
       if (data.success) {
+        // Fix threat level inconsistency by using AI risk score if available and high
+        let finalThreatLevel = data.data.threatLevel;
+        let finalIsPhishing = data.data.isPhishing;
+        
+        // Check if AI analysis provided a higher risk score
+        if (data.data.aiAnalysis && data.data.aiAnalysis.riskScore) {
+          const aiRiskScore = data.data.aiAnalysis.riskScore;
+          if (aiRiskScore >= 70) {
+            finalThreatLevel = 'high';
+            finalIsPhishing = true;
+          } else if (aiRiskScore >= 40) {
+            finalThreatLevel = 'medium';
+            finalIsPhishing = false;
+          } else {
+            finalThreatLevel = 'low';
+            finalIsPhishing = false;
+          }
+        }
+        
         setScanResult({
           type: 'url',
-          threat: data.data.threatLevel,
-          isPhishing: data.data.isPhishing,
+          threat: finalThreatLevel,
+          isPhishing: finalIsPhishing,
           riskScore: data.data.riskScore,
           combinedRiskScore: data.data.combinedRiskScore,
           flags: data.data.flags,
@@ -68,6 +93,9 @@ const PhishingPage = () => {
       } else {
         throw new Error(data.error || 'Analysis failed');
       }
+      
+      setScanProgress({ step: 'Complete', progress: 100 });
+      
     } catch (error) {
       console.error('URL scan error:', error);
       setScanResult({
@@ -177,10 +205,10 @@ const PhishingPage = () => {
   };
 
   const stats = [
-    { icon: Shield, label: 'Threats Blocked', value: '2.3M+', color: 'text-green-400' },
-    { icon: AlertTriangle, label: 'Phishing Attempts', value: '847K', color: 'text-red-400' },
-    { icon: Users, label: 'Protected Users', value: '150K+', color: 'text-blue-400' },
-    { icon: TrendingUp, label: 'Success Rate', value: '99.7%', color: 'text-purple-400' }
+    { icon: Shield, label: 'Threats Blocked', value: '2K+', color: 'text-green-400' },
+    { icon: AlertTriangle, label: 'Phishing Attempts', value: '5K+', color: 'text-red-400' },
+    { icon: Users, label: 'Protected Users', value: '1K+', color: 'text-blue-400' },
+    { icon: TrendingUp, label: 'Success Rate', value: '90+', color: 'text-purple-400' }
   ];
 
   const recentThreats = [
@@ -214,47 +242,73 @@ const PhishingPage = () => {
           </div>
         ))}
       </div>
-       {/* ML-Based Phishing Detection */}
-      <div className="ml-detection-section animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-        <MLPhishingDetection />
+      {/* WHOIS + Gemini Detection */}
+      
+      {/* Integrated Phishing Detection */}
+      <div className="integrated-detection-section animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+        <div className="integrated-header">
+          <div className="integrated-header-content">
+            <div className="integrated-icon-wrapper">
+              <Shield size={32} className="integrated-icon whois-icon" />
+            </div>
+            <div className="integrated-header-text">
+              <h2>Advanced Phishing Detection</h2>
+              <p>Comprehensive analysis using ML + WHOIS + Gemini AI technology</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="integrated-input-section">
+          <div className="integrated-input-group">
+            <input
+              type="url"
+              placeholder="Enter URL to analyze (e.g., https://example.com)"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleUrlScan()}
+              className="integrated-input"
+              disabled={isScanning}
+            />
+            <button
+              onClick={handleUrlScan}
+              disabled={!url.trim() || isScanning}
+              className="integrated-analyze-btn"
+            >
+              {isScanning ? (
+                <>
+                  <Activity className="animate-spin" size={16} />
+                  {scanProgress.step}
+                </>
+              ) : (
+                <>
+                  <Search size={16} />
+                  Analyze URL
+                </>
+              )}
+            </button>
+          </div>
+          
+          {isScanning && (
+            <div className="scan-progress">
+              <div className="progress-bar">
+                <div 
+                  className="progress-fill" 
+                  style={{ width: `${scanProgress.progress}%` }}
+                ></div>
+              </div>
+              <div className="progress-text">{scanProgress.step}</div>
+            </div>
+          )}
+        </div>
       </div>
       {/* Scanning Tools */}
       <div className="scanning-section">
         <div className="section-header">
-          <h2>Additional Phishing Analysis Tools</h2>
-          <p>Comprehensive analysis using multiple detection methods</p>
+          <h2>Additional Analysis Tools</h2>
+          <p>Email content analysis and historical threat data</p>
         </div>
         <div className="scan-grid">
-          {/* URL Scanner */}
-          <div className="scan-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            <div className="scan-header">
-              <Link className="scan-icon" />
-              <h3>URL Scanner</h3>
-            </div>
-            <div className="scan-content">
-              <input
-                type="url"
-                placeholder="Enter URL to scan (e.g., https://example.com)"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                className="scan-input"
-              />
-              <button 
-                onClick={handleUrlScan}
-                disabled={!url || isScanning}
-                className="scan-button"
-              >
-                {isScanning ? (
-                  <Activity className="animate-spin" />
-                ) : (
-                  <Search />
-                )}
-                {isScanning ? 'Scanning...' : 'Scan URL'}
-              </button>
-            </div>
-          </div>
-
-          {/* Email Scanner */}
+          {/* Email Scanner - Keeping only this one */}
           <div className="scan-card animate-slide-up" style={{ animationDelay: '0.3s' }}>
             <div className="scan-header">
               <Mail className="scan-icon" />
@@ -471,29 +525,32 @@ const PhishingPage = () => {
 
                   {/* URL Results */}
                   {scanResult.type === 'url' && (
-                    <div className="result-details">
-                      <h4>Domain Analysis</h4>
-                      <div className="detail-grid">
-                        <div className="detail-item">
-                          <span className="detail-label">Domain:</span>
-                          <span className="detail-value">{scanResult.details.domain}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="detail-label">Reputation Score:</span>
-                          <span className="detail-value">{scanResult.details.reputation}/100</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="detail-label">Similar Suspicious Sites:</span>
-                          <span className="detail-value">{scanResult.details.similarSites}</span>
-                        </div>
-                        {scanResult.details.domainAge && (
+                    <>
+                      {/* Domain Analysis */}
+                      <div className="result-details">
+                        <h4>Domain Analysis</h4>
+                        <div className="detail-grid">
                           <div className="detail-item">
-                            <span className="detail-label">Domain Age:</span>
-                            <span className="detail-value">{scanResult.details.domainAge}</span>
+                            <span className="detail-label">Domain:</span>
+                            <span className="detail-value">{scanResult.details.domain}</span>
                           </div>
-                        )}
+                          <div className="detail-item">
+                            <span className="detail-label">Reputation Score:</span>
+                            <span className="detail-value">{scanResult.details.reputation}/100</span>
+                          </div>
+                          <div className="detail-item">
+                            <span className="detail-label">Similar Suspicious Sites:</span>
+                            <span className="detail-value">{scanResult.details.similarSites}</span>
+                          </div>
+                          {scanResult.details.domainAge && (
+                            <div className="detail-item">
+                              <span className="detail-label">Domain Age:</span>
+                              <span className="detail-value">{scanResult.details.domainAge}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    </>
                   )}
 
                   {/* Email Results */}
@@ -536,6 +593,13 @@ const PhishingPage = () => {
                           <div className="score-container">
                             <span className="score-label">AI Risk Score</span>
                             <span className="score-value">{scanResult.aiAnalysis.riskScore}/100</span>
+                            {/* Show warning if AI score is much higher than traditional score */}
+                            {scanResult.aiAnalysis.riskScore > scanResult.riskScore + 20 && (
+                              <div className="score-warning">
+                                <AlertTriangle size={16} />
+                                <span>AI detected higher risk than traditional analysis</span>
+                              </div>
+                            )}
                           </div>
                           <div className="score-bar">
                             <div 
@@ -559,8 +623,8 @@ const PhishingPage = () => {
                     </div>
                   )}
 
-                  {/* Technical Details for Email */}
-                  {scanResult.type === 'email' && scanResult.mlAnalysis?.features && (
+                  {/* Technical Details for Email - REMOVED */}
+                  {/* {scanResult.type === 'email' && scanResult.mlAnalysis?.features && (
                     <div className="technical-details-section">
                       <button 
                         className="details-toggle-btn"
@@ -588,7 +652,7 @@ const PhishingPage = () => {
                         </div>
                       )}
                     </div>
-                  )}
+                  )} */}
                 </>
               )}
               
@@ -623,3 +687,165 @@ const PhishingPage = () => {
 };
 
 export default PhishingPage;
+
+/* Additional CSS for integrated detection */
+const styles = `
+.integrated-detection-section {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid #2a2a4a;
+  margin: 20px 0;
+}
+
+.integrated-header-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.integrated-icon-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  background: rgba(52, 211, 153, 0.1);
+  border-radius: 12px;
+}
+
+.integrated-icon {
+  position: absolute;
+}
+
+.whois-icon {
+  color: #34d399;
+}
+
+.integrated-header-text h2 {
+  color: #e2e8f0;
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.integrated-header-text p {
+  color: #94a3b8;
+  margin: 0;
+  font-size: 14px;
+}
+
+.integrated-input-group {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.integrated-input {
+  flex: 1;
+  padding: 12px 16px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.integrated-input:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+}
+
+.integrated-analyze-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  min-width: 140px;
+  justify-content: center;
+}
+
+.integrated-analyze-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(59, 130, 246, 0.3);
+}
+
+.integrated-analyze-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.scan-progress {
+  margin-top: 16px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(51, 65, 85, 0.6);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  color: #94a3b8;
+  font-size: 14px;
+  text-align: center;
+}
+
+.score-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .integrated-input-group {
+    flex-direction: column;
+  }
+
+  .integrated-input {
+    width: 100%;
+  }
+
+  .integrated-analyze-btn {
+    width: 100%;
+  }
+}
+`;
+
+// Inject styles
+if (typeof document !== 'undefined') {
+  const styleElement = document.createElement('style');
+  styleElement.textContent = styles;
+  document.head.appendChild(styleElement);
+}

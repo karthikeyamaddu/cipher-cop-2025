@@ -141,7 +141,7 @@ const Home = () => {
           <div className="home-content">
             <div className="hero-section">
               <div className="hero-text animate-slide-in-left">
-                <h1>CipherCop: Advanced AI-Powered Cybersecurity Platform</h1>
+                <h1>FraudLens: Advanced AI-Powered Cybersecurity Platform</h1>
                 <p>Professional-grade cybersecurity suite featuring cutting-edge AI and machine learning technologies. Our comprehensive platform delivers real-time protection against phishing, malware, clone attacks, and fraud with industry-leading accuracy rates and instant threat response.</p>
                 <div className="hero-buttons">
                   <button
@@ -244,7 +244,7 @@ const Home = () => {
                   </div>
                   
                   <div className="contact-features animate-fade-in-right">
-                    <h3>Why Choose CipherCop?</h3>
+                    <h3>Why Choose FraudLens?</h3>
                     <ul className="contact-benefits">
                       <li><CheckCircle size={16} /> AI-powered threat detection with 97.4% accuracy</li>
                       <li><CheckCircle size={16} /> Real-time protection across multiple attack vectors</li>
@@ -257,7 +257,7 @@ const Home = () => {
                 </div>
                 
                 <div className="contact-footer">
-                  <p>&copy; 2025 A++ Security Solutions. All rights reserved.</p>
+                  <p>&copy; 2025 FraudLens Security Solutions. All rights reserved.</p>
                   <p>Advanced AI-Powered Cybersecurity Platform | Professional Threat Detection & Response</p>
                 </div>
               </div>
@@ -275,7 +275,7 @@ const Home = () => {
           <div className="loading-spinner">
             <Shield size={48} className="animate-spin" />
           </div>
-          <div className="loading-text">Loading CipherCop...</div>
+          <div className="loading-text">Loading FraudLens...</div>
         </div>
       )}
 
@@ -285,7 +285,7 @@ const Home = () => {
           <div className="sidebar-header">
             <div className="logo animate-pulse">
               <Lock className="logo-icon" />
-              <span>CipherCop</span>
+              <span>FraudLens</span>
             </div>
           </div>
 
@@ -334,7 +334,7 @@ const Home = () => {
                 </div>
               </button>
               <div className="header-title">
-                <h1>Cybersecurity Dashboard</h1>
+                <h1>FraudLens Dashboard</h1>
               </div>
             </div>
             <div className="header-actions">

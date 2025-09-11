@@ -436,10 +436,10 @@ const ClonePage = () => {
   };
 
   const stats = [
-    { icon: Eye, label: 'Sites Analyzed', value: '2.8M+', color: 'text-blue-400' },
-    { icon: Copy, label: 'Clones Detected', value: '156K', color: 'text-red-400' },
-    { icon: FileImage, label: 'Screenshots Processed', value: '890K+', color: 'text-green-400' },
-    { icon: TrendingUp, label: 'Detection Accuracy', value: '97.3%', color: 'text-purple-400' }
+    { icon: Eye, label: 'Sites Analyzed', value: '2K+', color: 'text-blue-400' },
+    { icon: Copy, label: 'Clones Detected', value: '1K', color: 'text-red-400' },
+    { icon: FileImage, label: 'Screenshots Processed', value: '8K+', color: 'text-green-400' },
+    { icon: TrendingUp, label: 'Detection Accuracy', value: '90%', color: 'text-purple-400' }
   ];
 
   const recentClones = [
