@@ -525,7 +525,7 @@ app.post('/api/malware/store', protectRoute, async (req, res) => {
 // User profile update endpoint
 app.put('/api/user/update', protectRoute, async (req, res) => {
     try {
-        const { fullName, email } = req.body;
+        const { fullName, email, phone } = req.body;
         const userId = req.user._id;
         
         console.log('Updating user profile for:', userId);
@@ -548,11 +548,23 @@ app.put('/api/user/update', protectRoute, async (req, res) => {
                 });
             }
         }
+
+        // Validate phone if provided
+        if (phone) {
+            const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+            const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+            if (!phoneRegex.test(cleanPhone)) {
+                return res.status(400).json({
+                    error: 'Please enter a valid phone number',
+                    success: false
+                });
+            }
+        }
         
         // Update user
         const updatedUser = await User.findByIdAndUpdate(
             userId,
-            { fullName, email },
+            { fullName, email, phone: phone || '' },
             { new: true, runValidators: true }
         ).select('-password');
         
@@ -577,6 +589,149 @@ app.put('/api/user/update', protectRoute, async (req, res) => {
         console.error('User update error:', error);
         res.status(500).json({
             error: 'Failed to update profile: ' + error.message,
+            success: false
+        });
+    }
+});
+
+// Password change endpoint
+app.put('/api/user/change-password', protectRoute, async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        const userId = req.user._id;
+        
+        console.log('Changing password for user:', userId);
+        
+        // Validate required fields
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({
+                error: 'Current password and new password are required',
+                success: false
+            });
+        }
+        
+        // Validate new password strength
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                error: 'New password must be at least 6 characters long',
+                success: false
+            });
+        }
+        
+        // Get user with password
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                error: 'User not found',
+                success: false
+            });
+        }
+        
+        // Verify current password
+        const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isCurrentPasswordValid) {
+            return res.status(400).json({
+                error: 'Current password is incorrect',
+                success: false
+            });
+        }
+        
+        // Hash new password
+        const saltRounds = 10;
+        const hashedNewPassword = await bcrypt.hash(newPassword, saltRounds);
+        
+        // Update password
+        await User.findByIdAndUpdate(userId, { password: hashedNewPassword });
+        
+        res.status(200).json({
+            success: true,
+            message: 'Password changed successfully'
+        });
+        
+    } catch (error) {
+        console.error('Password change error:', error);
+        res.status(500).json({
+            error: 'Failed to change password: ' + error.message,
+            success: false
+        });
+    }
+});
+
+// Email verification endpoint
+app.post('/api/user/verify-email', protectRoute, async (req, res) => {
+    try {
+        const { email } = req.body;
+        const userId = req.user._id;
+        
+        console.log('Email verification requested for:', email);
+        
+        // Validate email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!email || !emailRegex.test(email)) {
+            return res.status(400).json({
+                error: 'Please enter a valid email address',
+                success: false
+            });
+        }
+        
+        // In a real application, you would:
+        // 1. Generate a verification token
+        // 2. Send an email with the verification link
+        // 3. Store the token in database with expiration
+        
+        // For demo purposes, we'll just return success
+        console.log(`Verification email would be sent to: ${email}`);
+        
+        res.status(200).json({
+            success: true,
+            message: 'Verification email sent successfully'
+        });
+        
+    } catch (error) {
+        console.error('Email verification error:', error);
+        res.status(500).json({
+            error: 'Failed to send verification email: ' + error.message,
+            success: false
+        });
+    }
+});
+
+// Phone verification endpoint
+app.post('/api/user/verify-phone', protectRoute, async (req, res) => {
+    try {
+        const { phone } = req.body;
+        const userId = req.user._id;
+        
+        console.log('Phone verification requested for:', phone);
+        
+        // Validate phone
+        const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+        const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
+        if (!phone || !phoneRegex.test(cleanPhone)) {
+            return res.status(400).json({
+                error: 'Please enter a valid phone number',
+                success: false
+            });
+        }
+        
+        // In a real application, you would:
+        // 1. Generate a verification code (OTP)
+        // 2. Send SMS with the verification code
+        // 3. Store the code in database with expiration
+        // 4. Provide endpoint to verify the code
+        
+        // For demo purposes, we'll just return success
+        console.log(`Verification code would be sent to: ${phone}`);
+        
+        res.status(200).json({
+            success: true,
+            message: 'Verification code sent successfully'
+        });
+        
+    } catch (error) {
+        console.error('Phone verification error:', error);
+        res.status(500).json({
+            error: 'Failed to send verification code: ' + error.message,
             success: false
         });
     }
