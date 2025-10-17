@@ -239,7 +239,7 @@ const Home = () => {
                     </div>
                     <div className="contact-item">
                       <span className="contact-label">Phone:</span>
-                      <span className="contact-text">+91 9959511898</span>
+                      <span className="contact-text">+91 XXXXXXXXXX</span>
                     </div>
                   </div>
                   

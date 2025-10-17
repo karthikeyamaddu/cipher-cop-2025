@@ -1,15 +1,51 @@
-import os, json
+import os
+import json
+import re
 from urllib.parse import urlparse
 import google.generativeai as genai
 
 _model = None
+
+
+def _select_model():
+    """Select a usable Gemini model from a prioritized list.
+
+    If the GEMINI_API_KEY environment variable is not set, raises RuntimeError.
+    This function attempts to construct a GenerativeModel for each candidate and
+    returns the first that does not raise.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not set")
+    genai.configure(api_key=api_key)
+
+    candidates = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash",
+        "gemini-flash-latest",
+        "gemini-pro-latest",
+    ]
+
+    for candidate in candidates:
+        try:
+            m = genai.GenerativeModel(candidate)
+            return m
+        except Exception:
+            # model not available to this key / endpoint - try next
+            continue
+
+    # Final fallback: let SDK pick default model (may still fail)
+    try:
+        return genai.GenerativeModel()
+    except Exception as e:
+        raise RuntimeError(f"No usable Gemini model found: {e}")
+
+
 def _model_once():
     global _model
     if _model is None:
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key: raise RuntimeError("GEMINI_API_KEY not set")
-        genai.configure(api_key=api_key)
-        _model = genai.GenerativeModel("gemini-1.5-flash")
+        _model = _select_model()
     return _model
 
 PROMPT = (
@@ -170,9 +206,20 @@ def judge_with_image(image_bytes: bytes, url: str, page_title: str, text_snippet
     ]
 
     resp = model.generate_content(parts)
-    out = resp.text or "{}"
-    try: data = json.loads(out)
-    except Exception: data = {"likelihood": 50, "suspected_brand": "", "explanation": out[:500]}
+    out = (resp.text or "{}").strip()
+
+    try:
+        data = json.loads(out)
+    except Exception:
+        # Fallback: try to extract JSON blob from text
+        json_match = re.search(r"\{(?:.|\n)*\}", out)
+        if json_match:
+            try:
+                data = json.loads(json_match.group())
+            except Exception:
+                data = {"likelihood": 50, "suspected_brand": "", "explanation": out[:500]}
+        else:
+            data = {"likelihood": 50, "suspected_brand": "", "explanation": out[:500]}
 
     data["likelihood"] = max(0, min(100, int(data.get("likelihood", 50))))
     data["suspected_brand"] = data.get("suspected_brand", "")
@@ -269,63 +316,63 @@ Be decisive and thorough. This is the final assessment that will determine user 
         {"text": enhanced_prompt},
         {"mime_type": "image/png", "data": image_bytes}
     ]
-
     try:
         resp = model.generate_content(parts)
-        out = resp.text or "{}"
-        
-        # Try to extract JSON from the response (similar to initial Gemini)
-        try: 
-            # First try direct JSON parsing
-            data = json.loads(out)
-        except Exception:
-            # Try to extract JSON from text (handle code fences)
-            import sys
-            import os
-            sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-            try:
-                from app import extract_json_from_text
-                extracted = extract_json_from_text(out)
-            except ImportError:
-                # Fallback JSON extraction if import fails
-                import re
-                json_match = re.search(r'\{.*\}', out, re.DOTALL)
-                if json_match:
-                    try:
-                        extracted = json.loads(json_match.group())
-                    except:
-                        extracted = None
-                else:
-                    extracted = None
-            if extracted:
-                data = {
-                    "final_likelihood": extracted.get("final_likelihood", initial_gemini.get("likelihood", 50)),
-                    "confidence": extracted.get("confidence", 70),
-                    "primary_threat_indicators": extracted.get("primary_threat_indicators", ["Extracted from partial response"]),
-                    "legitimacy_factors": extracted.get("legitimacy_factors", []),
-                    "final_verdict": extracted.get("final_verdict", "SUSPICIOUS"),
-                    "expert_explanation": extracted.get("expert_explanation", out[:500] if out else "Enhanced analysis failed")
-                }
-            else:
-                data = {
-                    "final_likelihood": initial_gemini.get("likelihood", 50),
-                    "confidence": 70,
-                    "primary_threat_indicators": ["JSON parsing failed"],
-                    "legitimacy_factors": [],
-                    "final_verdict": "SUSPICIOUS",
-                    "expert_explanation": out[:500] if out else "Enhanced analysis failed"
-                }
+        out = (resp.text or "{}").strip()
 
-        # Ensure proper data types and bounds
+        # First attempt: parse as JSON
+        try:
+            extracted = json.loads(out)
+        except Exception:
+            # Try to import a helper if available
+            extracted = None
+            try:
+                # app.extract_json_from_text may handle code fences and other noise
+                from app import extract_json_from_text
+                extracted_text = extract_json_from_text(out)
+                if extracted_text:
+                    try:
+                        extracted = json.loads(extracted_text)
+                    except Exception:
+                        extracted = None
+            except Exception:
+                # Fallback: regex to find first JSON object
+                m = re.search(r"\{(?:.|\n)*\}", out)
+                if m:
+                    try:
+                        extracted = json.loads(m.group())
+                    except Exception:
+                        extracted = None
+
+        if extracted:
+            data = {
+                "final_likelihood": extracted.get("final_likelihood", initial_gemini.get("likelihood", 50)),
+                "confidence": extracted.get("confidence", 70),
+                "primary_threat_indicators": extracted.get("primary_threat_indicators", ["Extracted from response"]),
+                "legitimacy_factors": extracted.get("legitimacy_factors", []),
+                "final_verdict": extracted.get("final_verdict", "SUSPICIOUS"),
+                "expert_explanation": extracted.get("expert_explanation", out[:500] if out else "Enhanced analysis failed")
+            }
+        else:
+            data = {
+                "final_likelihood": initial_gemini.get("likelihood", 50),
+                "confidence": 70,
+                "primary_threat_indicators": ["JSON parsing failed"],
+                "legitimacy_factors": [],
+                "final_verdict": "SUSPICIOUS",
+                "expert_explanation": out[:500] if out else "Enhanced analysis failed"
+            }
+
+        # Normalize types and bounds
         data["final_likelihood"] = max(0, min(100, int(data.get("final_likelihood", 50))))
         data["confidence"] = max(0, min(100, int(data.get("confidence", 70))))
         data["primary_threat_indicators"] = data.get("primary_threat_indicators", [])
         data["legitimacy_factors"] = data.get("legitimacy_factors", [])
         data["final_verdict"] = data.get("final_verdict", "SUSPICIOUS")
         data["expert_explanation"] = data.get("expert_explanation", "")
-        
+
         return data
-        
+
     except Exception as e:
         return {
             "final_likelihood": initial_gemini.get("likelihood", 50),

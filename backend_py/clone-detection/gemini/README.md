@@ -49,7 +49,7 @@ The system uses a three-tier detection approach:
 4. **Set up environment variables**
    Create a `.env` file in the root directory:
    ```env
-   GEMINI_API_KEY=your_gemini_api_key_here
+   GEMINI_API_KEY=AIzaSyANEa0anRX3Iqk9JajDRAHXuycnS3mT-no
    GOOGLE_APPLICATION_CREDENTIALS=path/to/your/service-account.json
    PROJECT_ID=your_gcp_project_id
    LOCATION=us-central1
