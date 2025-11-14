@@ -1,0 +1,40 @@
+url phishing detection:
+not safe
+www.dghjdgf.com/paypal.co.uk/cycgi-bin/webscrcmd=_home-customer&nav=1/loading.php
+safe:
+www.amazon.com
+
+email phishing detection:
+phishing:
+
+We issued a refund of $59.99 to your account. To confirm which card to use, login here: http://example.com/confirm-payment
+
+Thank you for shopping with us.
+
+legitimate:
+
+All,
+Please note the office will be closed on Oct 2. See calendar invite for details.
+Thanks, HR
+
+
+malware testing:
+using malware testing:
+
+file:
+safe:
+D:\volume E\ciphercop-2025\all-detections\malware-detection\Malware-Detection-and-Analysis-using-Machine-Learning\uploads
+unsafe:
+D:\volume E\ciphercop-2025\all-detections\malware-detection\Malware-Detection-and-Analysis-using-Machine-Learning\uploads
+
+sandbox:
+unsafe:
+same path, use processor file
+
+
+
+
+for clone, just url:
+1)https://www.alibaba.com
+2)https://hiranwj.github.io/google-homepage-clone/ 
+3)https://amazon-clone008.netlify.app/
