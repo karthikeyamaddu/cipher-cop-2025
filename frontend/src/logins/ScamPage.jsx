@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { DollarSign, AlertTriangle, Search, Phone, TrendingUp, Users, Shield, CheckCircle, Database, CreditCard, Loader, Zap, Brain, Eye, Lock, Cpu } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { DollarSign, AlertTriangle, Search, Phone, TrendingUp, Users, Shield, CheckCircle, Database, CreditCard, Loader, Zap, Brain, Eye, Lock, Cpu, Clock, FileText } from 'lucide-react';
 
 const ScamPage = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -16,6 +16,72 @@ const ScamPage = () => {
 
   // Phone Number Scam Detection API endpoint
   const API_BASE_URL = 'http://localhost:5006';
+  
+  // Test history
+  const [testHistory, setTestHistory] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Fetch test history on component mount
+  useEffect(() => {
+    fetchTestHistory();
+  }, []);
+
+  const fetchTestHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const response = await fetch('http://localhost:5001/api/tests/history?testType=scam&limit=5', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTestHistory(Array.isArray(data.data) ? data.data : []);
+      } else {
+        setTestHistory([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch test history:', error);
+      setTestHistory([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  // Save scam phone result to database
+  const saveScamToDatabase = async (phoneData) => {
+    try {
+      console.log('💾 Saving scam phone result to database...');
+      
+      const response = await fetch('http://localhost:5001/api/scam/store', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          phoneNumber: phoneData.e164 || phoneNumber,
+          score: phoneData.score,
+          verdict: phoneData.verdict,
+          providers: Object.keys(phoneData.signals || {}),
+          enhancedAnalysis: phoneData.enhanced_analysis,
+          aiAnalysis: phoneData.ai_analysis,
+          reportsCount: phoneData.debug_info?.reports_count || 0
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Scam phone saved to database:', result.data.testId);
+        fetchTestHistory(); // Refresh history
+        return result;
+      } else {
+        const error = await response.json();
+        console.error('❌ Failed to save to database:', error);
+      }
+    } catch (error) {
+      console.error('❌ Database save error:', error);
+    }
+  };
 
   const handlePhoneCheck = async () => {
     if (!phoneNumber) return;
@@ -62,6 +128,9 @@ const ScamPage = () => {
           raw_signals: data.signals || {}
         }
       });
+      
+      // Save to database
+      await saveScamToDatabase(data);
 
     } catch (error) {
       console.error('Phone check error:', error);
@@ -564,24 +633,75 @@ const ScamPage = () => {
         </div>
       )}
 
-      {/* Recent Scam Detections */}
-      <div className="threats-section animate-fade-in-up">
-        <h3>Recent Scam Detections</h3>
-        <div className="scam-list">
-          {recentScams.map((scam, index) => (
-            <div key={index} className="scam-item" style={{ animationDelay: `${index * 0.1}s` }}>
-              <div className="scam-info">
-                <div className="scam-type">{scam.type}</div>
-                <div className="scam-contact">{scam.contact}</div>
-                <div className="scam-amount">Attempted: {scam.amount}</div>
-                <div className="scam-time">{scam.time}</div>
+      {/* Your Recent Tests or Sample Data */}
+      <div className="threats-section animate-fade-in-up" style={{ marginTop: '30px' }}>
+        <h3>
+          <Clock size={20} style={{ display: 'inline', marginRight: '8px' }} />
+          {testHistory.length > 0 ? 'Your Recent Scam Phone Tests' : 'Recent Scam Detections (Sample)'}
+        </h3>
+        {!isLoadingHistory && testHistory.length === 0 && (
+          <div style={{ fontSize: '0.875rem', color: '#64b5f6', marginBottom: '1rem', padding: '0.75rem', background: 'rgba(100, 181, 246, 0.1)', borderRadius: '6px', border: '1px solid rgba(100, 181, 246, 0.2)' }}>
+            ℹ️ These are sample detections for reference. Your actual test results will appear here after your first scan.
+          </div>
+        )}
+        {isLoadingHistory ? (
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            <Phone className="animate-spin" size={24} style={{ display: 'inline' }} />
+            <p>Loading your test history...</p>
+          </div>
+        ) : testHistory.length === 0 ? (
+          <div className="scam-list">
+            {recentScams.map((scam, index) => (
+              <div key={index} className="scam-item" style={{ animationDelay: `${index * 0.1}s`, opacity: 0.6 }}>
+                <div className="scam-info">
+                  <div className="scam-type">{scam.type}</div>
+                  <div className="scam-contact">{scam.contact}</div>
+                  <div className="scam-amount">Attempted: {scam.amount}</div>
+                  <div className="scam-time">{scam.time}</div>
+                </div>
+                <div className={`status-badge status-${scam.status}`}>
+                  {scam.status.toUpperCase()}
+                </div>
               </div>
-              <div className={`status-badge status-${scam.status}`}>
-                {scam.status.toUpperCase()}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="threats-list">
+            {testHistory.map((test, index) => {
+              const threatLevel = test.result?.threatLevel || 'low';
+              const riskScore = test.result?.riskScore || 0;
+              const phoneNum = test.inputData?.phoneNumber || 'Unknown';
+              const date = new Date(test.createdAt).toLocaleString();
+              const verdict = test.result?.verdict || 'Unknown';
+              
+              return (
+                <div key={test._id} className="threat-item" style={{ animationDelay: `${index * 0.1}s` }}>
+                  <div className="threat-info">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Phone size={16} />
+                      <span className="threat-domain" style={{ 
+                        fontFamily: 'monospace',
+                        fontSize: '16px'
+                      }}>
+                        {phoneNum}
+                      </span>
+                    </div>
+                    <span className="threat-time">{date}</span>
+                  </div>
+                  <div className="threat-details" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '14px', color: '#888' }}>
+                      Score: {riskScore}/100
+                    </span>
+                    <div className={`threat-level threat-${threatLevel}`}>
+                      {test.result?.isScam ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
+                      {verdict.toUpperCase()}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

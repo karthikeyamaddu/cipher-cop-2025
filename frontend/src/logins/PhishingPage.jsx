@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { AlertTriangle, Mail, Link, Shield, Search, FileText, Activity, TrendingUp, Users, CheckCircle, ChevronDown, Settings, Eye, Brain } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { AlertTriangle, Mail, Link, Shield, Search, FileText, Activity, TrendingUp, Users, CheckCircle, ChevronDown, Settings, Eye, Brain, Clock, ExternalLink } from 'lucide-react';
 
 
 const PhishingPage = () => {
@@ -18,6 +18,74 @@ const PhishingPage = () => {
   const [replyTo, setReplyTo] = useState('');
   const [hasAttachment, setHasAttachment] = useState(false);
   const [urgentKeywords, setUrgentKeywords] = useState(false);
+  
+  // Test history
+  const [testHistory, setTestHistory] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Fetch test history on component mount
+  useEffect(() => {
+    fetchTestHistory();
+  }, []);
+
+  const fetchTestHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const response = await fetch('http://localhost:5001/api/tests/history?testType=phishing&limit=5', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTestHistory(Array.isArray(data.data) ? data.data : []);
+      } else {
+        setTestHistory([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch test history:', error);
+      setTestHistory([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  // Save email phishing result to database
+  const saveEmailToDatabase = async (mlResult) => {
+    try {
+      console.log('💾 Saving email phishing result to database...');
+      
+      const response = await fetch('http://localhost:5001/api/phishing/analyze-email-store', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          emailData: {
+            subject: emailSubject || 'No subject',
+            senderEmail: senderEmail || null,
+            senderDomain: senderDomain || null,
+            replyTo: replyTo || null,
+            hasAttachment: hasAttachment,
+            urgentKeywords: urgentKeywords
+          },
+          mlResult: mlResult
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Email phishing saved to database:', result.data.testId);
+        fetchTestHistory(); // Refresh history
+        return result;
+      } else {
+        const error = await response.json();
+        console.error('❌ Failed to save to database:', error);
+      }
+    } catch (error) {
+      console.error('❌ Database save error:', error);
+    }
+  };
 
   const handleUrlScan = async () => {
     if (!url) return;
@@ -95,6 +163,7 @@ const PhishingPage = () => {
       }
       
       setScanProgress({ step: 'Complete', progress: 100 });
+      fetchTestHistory(); // Refresh history after URL scan
       
     } catch (error) {
       console.error('URL scan error:', error);
@@ -186,6 +255,9 @@ const PhishingPage = () => {
             linkDensity: data.features_used?.link_density || 0
           }
         });
+        
+        // Save to database
+        await saveEmailToDatabase(data);
       } else {
         throw new Error(data.error || 'ML analysis failed');
       }
@@ -671,23 +743,64 @@ const PhishingPage = () => {
         </div>
       )}
 
-      {/* Recent Threats */}
+      {/* Your Recent Tests */}
       <div className="threats-section animate-fade-in-up">
-        <h3>Recent Threats Detected</h3>
-        <div className="threats-list">
-          {recentThreats.map((threat, index) => (
-            <div key={index} className="threat-item" style={{ animationDelay: `${index * 0.1}s` }}>
-              <div className="threat-info">
-                <span className="threat-domain">{threat.domain}</span>
-                <span className="threat-time">{threat.time}</span>
-              </div>
-              <div className={`threat-level threat-${threat.threat}`}>
-                <AlertTriangle size={16} />
-                {threat.threat.toUpperCase()}
-              </div>
-            </div>
-          ))}
-        </div>
+        <h3>
+          <Clock size={20} style={{ display: 'inline', marginRight: '8px' }} />
+          Your Recent Phishing Tests
+        </h3>
+        {isLoadingHistory ? (
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            <Activity className="animate-spin" size={24} style={{ display: 'inline' }} />
+            <p>Loading your test history...</p>
+          </div>
+        ) : testHistory.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+            <FileText size={48} style={{ opacity: 0.3, margin: '0 auto 10px' }} />
+            <p>No phishing tests yet. Start by analyzing a URL or email above!</p>
+          </div>
+        ) : (
+          <div className="threats-list">
+            {testHistory.map((test, index) => {
+              const isUrl = test.testType === 'phishing-url';
+              const isEmail = test.testType === 'phishing-email';
+              const threatLevel = test.result?.threatLevel || 'low';
+              const riskScore = test.result?.riskScore || 0;
+              const target = isUrl ? test.inputData?.url : 
+                            isEmail ? test.inputData?.email || 'Email Analysis' : 
+                            'Unknown';
+              const date = new Date(test.createdAt).toLocaleString();
+              
+              return (
+                <div key={test._id} className="threat-item" style={{ animationDelay: `${index * 0.1}s` }}>
+                  <div className="threat-info">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {isUrl ? <Link size={16} /> : <Mail size={16} />}
+                      <span className="threat-domain" style={{ 
+                        maxWidth: '400px', 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {target}
+                      </span>
+                    </div>
+                    <span className="threat-time">{date}</span>
+                  </div>
+                  <div className="threat-details" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '14px', color: '#888' }}>
+                      Risk: {riskScore}%
+                    </span>
+                    <div className={`threat-level threat-${threatLevel}`}>
+                      {threatLevel === 'low' ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
+                      {threatLevel.toUpperCase()}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

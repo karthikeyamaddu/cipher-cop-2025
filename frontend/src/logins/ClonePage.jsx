@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Copy, Search, Globe, AlertTriangle, CheckCircle, TrendingUp, Users, Upload, Eye, FileImage, X, Brain, Cpu } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Copy, Search, Globe, AlertTriangle, CheckCircle, TrendingUp, Users, Upload, Eye, FileImage, X, Brain, Cpu, Clock } from 'lucide-react';
 
 const ClonePage = () => {
   const [url, setUrl] = useState('');
@@ -7,6 +7,36 @@ const ClonePage = () => {
   const [scanResult, setScanResult] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
   const [analysisType, setAnalysisType] = useState('combined'); // 'ai', 'ml', 'combined'
+  
+  // Test history
+  const [testHistory, setTestHistory] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Fetch test history on component mount
+  useEffect(() => {
+    fetchTestHistory();
+  }, []);
+
+  const fetchTestHistory = async () => {
+    setIsLoadingHistory(true);
+    try {
+      const response = await fetch('http://localhost:5001/api/tests/history?testType=clone&limit=5', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setTestHistory(Array.isArray(data.data) ? data.data : []);
+      } else {
+        setTestHistory([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch test history:', error);
+      setTestHistory([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
 
   // API Configuration
   const API_ENDPOINTS = {
@@ -80,24 +110,34 @@ const ClonePage = () => {
 
   // Helper function to extract ML data from integrated AI response
   const extractMlFromAiResponse = (aiData) => {
+    console.log('🔍 Extracting ML from AI response:', aiData);
+    
+    // Check if ML data exists in signals
     const mlData = aiData.signals?.ml_phishpedia;
+    console.log('🔬 ML data found:', mlData);
+    
     if (!mlData) {
+      console.warn('⚠️ No ML data found in AI response');
       return {
         result: 'Unknown',
         matched_brand: 'unknown',
         confidence: 0,
         correct_domain: 'unknown',
-        detection_time: '0.00'
+        detection_time: '0.00',
+        error: 'ML data not found in response'
       };
     }
 
-    return {
+    const extracted = {
       result: mlData.result || 'Unknown',
       matched_brand: mlData.matched_brand || mlData.brand || 'unknown', 
       confidence: mlData.confidence || 0,
-      correct_domain: mlData.correct_domain || 'unknown',
+      correct_domain: mlData.correct_domain || mlData.legitimate_domain || 'unknown',
       detection_time: mlData.detection_time || '0.00'
     };
+    
+    console.log('✅ Extracted ML data:', extracted);
+    return extracted;
   };
 
   // Main function to call both ML and AI services
@@ -107,13 +147,12 @@ const ClonePage = () => {
       ai: { status: 'pending', data: null, error: null }
     };
 
-    // Call AI Service (now includes integrated ML analysis)
+    // Call AI Service (Gemini - port 5003)
     try {
-      console.log('Calling integrated AI+ML service...');
+      console.log('🧠 Calling AI Service (Gemini)...');
       
       let aiResponse;
       if (imageFile) {
-        // Case 1: User uploaded screenshot - send to AI
         const formData = new FormData();
         formData.append('screenshot', imageFile);
         if (url && url.trim()) {
@@ -125,7 +164,6 @@ const ClonePage = () => {
           body: formData
         });
       } else {
-        // Case 2: URL-only - AI will take screenshot and run both AI+ML analysis
         aiResponse = await fetch(API_ENDPOINTS.ai, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -135,37 +173,86 @@ const ClonePage = () => {
 
       if (aiResponse.ok) {
         const rawData = await aiResponse.json();
-        console.log('AI+ML Integrated Response:', rawData);
-        
-        // Extract AI results
+        console.log('✅ AI Service (Gemini) completed:', rawData);
         results.ai.data = normalizeAiResponse(rawData);
         results.ai.status = 'completed';
         
-        // Extract ML results from integrated response
-        const mlData = extractMlFromAiResponse(rawData);
-        results.ml.data = mlData;
-        results.ml.status = rawData.signals?.ml_phishpedia?.status === 'success' ? 'completed' : 
-                           rawData.signals?.ml_phishpedia?.error ? 'failed' : 'completed';
-        
-        if (rawData.signals?.ml_phishpedia?.error) {
-          results.ml.error = rawData.signals.ml_phishpedia.error;
+        // Extract ML data from AI response if it exists (AI service calls ML internally)
+        if (rawData.signals?.ml_phishpedia) {
+          console.log('🔬 Found ML data in AI response, extracting...');
+          results.ml.data = extractMlFromAiResponse(rawData);
+          results.ml.status = 'completed';
+          console.log('✅ ML data extracted from AI response:', results.ml.data);
         }
-        
-        console.log('AI Service completed successfully');
-        console.log('ML Service results extracted from AI response');
       } else {
         const errorData = await aiResponse.json();
         results.ai.error = errorData.error || `HTTP ${aiResponse.status}`;
         results.ai.status = 'failed';
-        results.ml.error = 'AI service failed - ML analysis not available';
-        results.ml.status = 'failed';
+        console.log('❌ AI Service failed:', results.ai.error);
       }
     } catch (error) {
       results.ai.error = error.message;
       results.ai.status = 'failed';
-      results.ml.error = 'AI service failed - ML analysis not available';  
+      console.log('❌ AI Service error:', error.message);
+    }
+
+    // Call ML Service (Phishpedia - port 5000)
+    try {
+      console.log('⚡ Calling ML Service (Phishpedia)...');
+      
+      if (imageFile) {
+        // Upload screenshot first
+        const uploadFormData = new FormData();
+        uploadFormData.append('image', imageFile);
+        
+        const uploadResponse = await fetch(API_ENDPOINTS.ml.upload, {
+          method: 'POST',
+          body: uploadFormData
+        });
+        
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed: HTTP ${uploadResponse.status}`);
+        }
+        
+        const uploadData = await uploadResponse.json();
+        if (!uploadData.success) {
+          throw new Error(uploadData.error || 'Image upload failed');
+        }
+        
+        // Then detect with uploaded image
+        const detectResponse = await fetch(API_ENDPOINTS.ml.detect, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: url || '',
+            imageUrl: uploadData.imageUrl
+          })
+        });
+
+        if (detectResponse.ok) {
+          const mlData = await detectResponse.json();
+          console.log('✅ ML Service (Phishpedia) completed:', mlData);
+          results.ml.data = normalizeMlResponse(mlData);
+          results.ml.status = 'completed';
+        } else {
+          const errorData = await detectResponse.json();
+          results.ml.error = errorData.error || 'ML detection failed';
+          results.ml.status = 'failed';
+          console.log('❌ ML Service failed:', results.ml.error);
+        }
+      } else {
+        // URL-only: Check if ML data was already extracted from AI response
+        if (results.ml.status !== 'completed') {
+          // ML data not found in AI response, mark as skipped
+          results.ml.error = null;
+          results.ml.status = 'skipped';
+          console.log('ℹ️ ML Service skipped for URL-only analysis (use screenshot for ML)');
+        }
+      }
+    } catch (error) {
+      results.ml.error = error.message;
       results.ml.status = 'failed';
-      console.log('AI+ML Service failed:', error.message);
+      console.log('❌ ML Service error:', error.message);
     }
 
     return results;
@@ -188,26 +275,46 @@ const ClonePage = () => {
           data: results,
           details: { lastChecked: new Date().toLocaleString() }
         });
+        
+        // Save to database
+        await saveToDatabase(
+          url,
+          analysisType,
+          results.ml.data,
+          results.ai.data,
+          null
+        );
       } else {
         // Call single service
-        let response, data;
+        // For both AI and ML with URL, use the AI service endpoint
+        // The AI service will take screenshot and call ML if needed
+        const response = await fetch(API_ENDPOINTS.ai, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            url,
+            mode: analysisType // Tell AI service which mode we want
+          })
+        });
         
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || `${analysisType.toUpperCase()} analysis failed`);
+        }
+        
+        const responseData = await response.json();
+        console.log('📦 AI Service response:', responseData);
+        
+        // Normalize based on analysis type
+        let data;
         if (analysisType === 'ml') {
-          // ML service requires screenshot for meaningful analysis
-          throw new Error('ML analysis requires a screenshot');
-        } else if (analysisType === 'ai') {
-          response = await fetch(API_ENDPOINTS.ai, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url })
-          });
-          
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'AI analysis failed');
-          }
-          
-          data = normalizeAiResponse(await response.json());
+          // Extract ML results from AI service response
+          // The AI service returns full analysis with ML data in signals.ml_phishpedia
+          data = extractMlFromAiResponse(responseData);
+          console.log('🔬 Extracted ML data:', data);
+        } else {
+          // AI mode
+          data = normalizeAiResponse(responseData);
         }
         
         setScanResult({
@@ -217,6 +324,15 @@ const ClonePage = () => {
           data,
           details: { lastChecked: new Date().toLocaleString() }
         });
+        
+        // Save to database
+        await saveToDatabase(
+          url,
+          analysisType,
+          analysisType === 'ml' ? data : null,
+          analysisType === 'ai' ? data : null,
+          null
+        );
       }
     } catch (error) {
       console.error('URL analysis error:', error);
@@ -275,6 +391,46 @@ const ClonePage = () => {
     setUrl(newUrl);
   };
 
+  // Save clone detection result to database
+  const saveToDatabase = async (url, analysisType, mlData, aiData, screenshot) => {
+    try {
+      console.log('💾 Saving clone detection result to database...');
+      
+      // Remove large logo_extraction data to prevent 413 Payload Too Large
+      const cleanMlData = mlData ? {
+        ...mlData,
+        logo_extraction: mlData.logo_extraction ? '[REMOVED - Too Large]' : null
+      } : null;
+      
+      const response = await fetch('http://localhost:5001/api/clone/store', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          url: url || '',
+          analysisType: analysisType,
+          mlData: cleanMlData,
+          aiData: aiData || null,
+          screenshot: screenshot ? { name: screenshot.name } : null
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Clone detection saved to database:', result.data.testId);
+        fetchTestHistory(); // Refresh history
+        return result;
+      } else {
+        const error = await response.json();
+        console.error('❌ Failed to save to database:', error);
+      }
+    } catch (error) {
+      console.error('❌ Database save error:', error);
+    }
+  };
+
   // Handle screenshot analysis
   const handleScreenshotAnalysis = async () => {
     if (!selectedFile) return;
@@ -295,6 +451,15 @@ const ClonePage = () => {
             lastChecked: new Date().toLocaleString()
           }
         });
+        
+        // Save to database
+        await saveToDatabase(
+          url,
+          analysisType,
+          results.ml.data,
+          results.ai.data,
+          selectedFile
+        );
       } else {
         // Call single service
         let data;
@@ -367,6 +532,15 @@ const ClonePage = () => {
             lastChecked: new Date().toLocaleString()
           }
         });
+        
+        // Save to database
+        await saveToDatabase(
+          url,
+          analysisType,
+          analysisType === 'ml' ? data : null,
+          analysisType === 'ai' ? data : null,
+          selectedFile
+        );
       }
     } catch (error) {
       console.error('Screenshot analysis error:', error);
@@ -855,37 +1029,100 @@ const ClonePage = () => {
         </div>
       )}
 
-      {/* Recent Clone Detections */}
-      <div className="threats-section animate-fade-in-up">
-        <h3>Recent Clone Detections</h3>
-        <div className="clone-list">
-          {recentClones.map((clone, index) => (
-            <div key={index} className="clone-item" style={{ animationDelay: `${index * 0.1}s` }}>
-              <div className="clone-info">
-                <div className="clone-details">
-                  <span className="original-site">Original: {clone.original}</span>
-                  <span className="clone-site">Clone: {clone.clone}</span>
-                  <span className="clone-time">{clone.time}</span>
-                </div>
-                <div className="similarity-mini">
-                  <span>{clone.similarity}% similar</span>
-                  <div className="mini-bar">
-                    <div 
-                      className="mini-fill" 
-                      style={{ 
-                        width: `${clone.similarity}%`,
-                        background: clone.similarity > 90 ? '#ef4444' : '#f59e0b'
-                      }}
-                    ></div>
+      {/* Your Recent Tests or Sample Data */}
+      <div className="threats-section animate-fade-in-up" style={{ marginTop: '30px' }}>
+        <h3>
+          <Clock size={20} style={{ display: 'inline', marginRight: '8px' }} />
+          {testHistory.length > 0 ? 'Your Recent Clone Detection Tests' : 'Recent Clone Detections (Sample)'}
+        </h3>
+        {!isLoadingHistory && testHistory.length === 0 && (
+          <div style={{ fontSize: '0.875rem', color: '#64b5f6', marginBottom: '1rem', padding: '0.75rem', background: 'rgba(100, 181, 246, 0.1)', borderRadius: '6px', border: '1px solid rgba(100, 181, 246, 0.2)' }}>
+            ℹ️ These are sample detections for reference. Your actual test results will appear here after your first scan.
+          </div>
+        )}
+        {isLoadingHistory ? (
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            <Brain className="animate-spin" size={24} style={{ display: 'inline' }} />
+            <p>Loading your test history...</p>
+          </div>
+        ) : testHistory.length === 0 ? (
+          <div className="clone-list">
+            {recentClones.map((clone, index) => (
+              <div key={index} className="clone-item" style={{ animationDelay: `${index * 0.1}s`, opacity: 0.6 }}>
+                <div className="clone-info">
+                  <div className="clone-details">
+                    <span className="original-site">Original: {clone.original}</span>
+                    <span className="clone-site">Clone: {clone.clone}</span>
+                    <span className="clone-time">{clone.time}</span>
+                  </div>
+                  <div className="similarity-mini">
+                    <span>{clone.similarity}% similar</span>
+                    <div className="mini-bar">
+                      <div 
+                        className="mini-fill" 
+                        style={{ 
+                          width: `${clone.similarity}%`,
+                          background: clone.similarity > 90 ? '#ef4444' : '#f59e0b'
+                        }}
+                      ></div>
+                    </div>
                   </div>
                 </div>
+                <div className={`status-badge status-${clone.status}`}>
+                  {clone.status.toUpperCase()}
+                </div>
               </div>
-              <div className={`status-badge status-${clone.status}`}>
-                {clone.status.toUpperCase()}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="threats-list">
+            {testHistory.map((test, index) => {
+              const threatLevel = test.result?.threatLevel || 'low';
+              const riskScore = test.result?.riskScore || 0;
+              const target = test.inputData?.url || test.inputData?.screenshotName || 'Screenshot Analysis';
+              const date = new Date(test.createdAt).toLocaleString();
+              const testTypeLabel = test.testType === 'clone-ai' ? 'AI' : 
+                                   test.testType === 'clone-ml' ? 'ML' : 'Combined';
+              
+              return (
+                <div key={test._id} className="threat-item" style={{ animationDelay: `${index * 0.1}s` }}>
+                  <div className="threat-info">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {test.inputData?.url ? <Globe size={16} /> : <FileImage size={16} />}
+                      <span className="threat-domain" style={{ 
+                        maxWidth: '400px', 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {target}
+                      </span>
+                      <span style={{ 
+                        fontSize: '12px', 
+                        padding: '2px 8px', 
+                        background: '#2a2a4a', 
+                        borderRadius: '4px',
+                        color: '#64b5f6'
+                      }}>
+                        {testTypeLabel}
+                      </span>
+                    </div>
+                    <span className="threat-time">{date}</span>
+                  </div>
+                  <div className="threat-details" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '14px', color: '#888' }}>
+                      Risk: {riskScore}%
+                    </span>
+                    <div className={`threat-level threat-${threatLevel}`}>
+                      {test.result?.isClone ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
+                      {test.result?.isClone ? 'CLONE' : 'SAFE'}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

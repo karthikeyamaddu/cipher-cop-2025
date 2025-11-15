@@ -76,12 +76,18 @@ const ProfilePage = () => {
 
           if (statsData.byType) {
             statsData.byType.forEach(stat => {
-              switch (stat._id) {
-                case 'phishing': transformedStats.phishingTests = stat.count; break;
-                case 'malware': transformedStats.malwareTests = stat.count; break;
-                case 'clone': transformedStats.cloneTests = stat.count; break;
-                case 'scam': transformedStats.scamTests = stat.count; break;
-                case 'sandbox': transformedStats.sandboxTests = stat.count; break;
+              const testType = stat._id;
+              // Group by prefix
+              if (testType.startsWith('phishing')) {
+                transformedStats.phishingTests += stat.count;
+              } else if (testType.startsWith('malware')) {
+                transformedStats.malwareTests += stat.count;
+              } else if (testType.startsWith('clone')) {
+                transformedStats.cloneTests += stat.count;
+              } else if (testType.startsWith('scam')) {
+                transformedStats.scamTests += stat.count;
+              } else if (testType === 'sandbox') {
+                transformedStats.sandboxTests += stat.count;
               }
             });
           }
@@ -102,11 +108,11 @@ const ProfilePage = () => {
     }
   }, []);
 
-  // Fetch recent tests
+  // Fetch ALL user activities
   const fetchRecentTests = useCallback(async () => {
     setTestsLoading(true);
     try {
-      const response = await fetch('http://localhost:5001/api/tests/history?limit=5', {
+      const response = await fetch('http://localhost:5001/api/user/activities?limit=20', {
         method: 'GET',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -114,12 +120,12 @@ const ProfilePage = () => {
 
       if (response.ok) {
         const result = await response.json();
-        if (result.success && result.data.tests) {
-          setRecentTests(result.data.tests.slice(0, 5));
+        if (result.success && result.data) {
+          setRecentTests(result.data);
         }
       }
     } catch (error) {
-      console.error('Error fetching recent tests:', error);
+      console.error('Error fetching activities:', error);
     } finally {
       setTestsLoading(false);
     }
@@ -829,7 +835,7 @@ const ProfilePage = () => {
               )}
             </div>
 
-            {/* Recent Tests */}
+            {/* All Activities */}
             <div className="content-card">
               <div className="card-header">
                 <div className="card-title-section">
@@ -837,46 +843,119 @@ const ProfilePage = () => {
                     <Activity size={20} />
                   </div>
                   <div>
-                    <h2 className="card-title">Recent Activity</h2>
-                    <p className="card-subtitle">Your latest security scans</p>
+                    <h2 className="card-title">All Activities</h2>
+                    <p className="card-subtitle">Complete history of your security scans (User ID: {user?._id})</p>
                   </div>
                 </div>
+                <button onClick={fetchRecentTests} className="btn btn-ghost" style={{ fontSize: '0.875rem' }}>
+                  <Activity size={16} />
+                  Refresh
+                </button>
               </div>
 
               <div className="activity-list">
                 {testsLoading ? (
                   <div className="loading-container">
                     <div className="loading-spinner"></div>
-                    <span className="loading-text">Loading activity...</span>
+                    <span className="loading-text">Loading all activities...</span>
                   </div>
                 ) : recentTests && recentTests.length > 0 ? (
-                  recentTests.map((test, index) => (
-                    <div key={test._id} className="activity-item">
-                      <div className="activity-info">
-                        <div className="activity-icon">{getThreatIcon(test.testType)}</div>
-                        <div>
-                          <div className="activity-title">{test.testType} Scan</div>
-                          <div className="activity-description">
-                            {test.inputData?.url || test.inputData?.fileName || 'Content Analysis'}
+                  <>
+                    <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', fontSize: '0.875rem', color: '#3b82f6' }}>
+                      <strong>Showing {recentTests.length} most recent activities</strong> linked to your account
+                    </div>
+                    {recentTests.map((test, index) => {
+                      const getTestTypeLabel = (type) => {
+                        const labels = {
+                          'phishing-url': 'Phishing URL',
+                          'phishing-email': 'Email Phishing',
+                          'clone-ai': 'Clone Detection (AI)',
+                          'clone-ml': 'Clone Detection (ML)',
+                          'clone-combined': 'Clone Detection (Combined)',
+                          'malware-virustotal': 'Malware (VirusTotal)',
+                          'malware-sandbox': 'Malware (Sandbox)',
+                          'scam-phone': 'Scam Phone'
+                        };
+                        return labels[type] || type;
+                      };
+
+                      const getTarget = (test) => {
+                        if (test.inputData?.url) return test.inputData.url;
+                        if (test.inputData?.fileName) return test.inputData.fileName;
+                        if (test.inputData?.emailSubject) return test.inputData.emailSubject;
+                        if (test.inputData?.phoneNumber) return test.inputData.phoneNumber;
+                        if (test.inputData?.screenshotName) return test.inputData.screenshotName;
+                        return 'Analysis';
+                      };
+
+                      const getThreatStatus = (test) => {
+                        if (test.result.isPhishing) return { status: 'PHISHING DETECTED', color: '#ef4444' };
+                        if (test.result.isMalware) return { status: 'MALWARE DETECTED', color: '#dc2626' };
+                        if (test.result.isClone) return { status: 'CLONE DETECTED', color: '#f97316' };
+                        if (test.result.isScam) return { status: 'SCAM DETECTED', color: '#ea580c' };
+                        return { status: 'SAFE', color: '#10b981' };
+                      };
+
+                      const threat = getThreatStatus(test);
+
+                      return (
+                        <div key={test._id} className="activity-item" style={{ borderLeft: `4px solid ${threat.color}` }}>
+                          <div className="activity-info">
+                            <div className="activity-icon" style={{ fontSize: '1.5rem' }}>
+                              {getThreatIcon(test.testType)}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div className="activity-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {getTestTypeLabel(test.testType)}
+                                <span style={{ 
+                                  fontSize: '0.75rem', 
+                                  padding: '0.125rem 0.5rem', 
+                                  background: 'rgba(100, 116, 139, 0.1)', 
+                                  borderRadius: '4px',
+                                  color: '#64748b'
+                                }}>
+                                  #{index + 1}
+                                </span>
+                              </div>
+                              <div className="activity-description" style={{ 
+                                maxWidth: '500px', 
+                                overflow: 'hidden', 
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {getTarget(test)}
+                              </div>
+                              {test.result.riskScore !== undefined && (
+                                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                                  Risk Score: {test.result.riskScore}% | Threat Level: {test.result.threatLevel || 'N/A'}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="activity-result">
+                            <div className="activity-status" style={{ 
+                              background: threat.color,
+                              color: 'white',
+                              padding: '0.375rem 0.75rem',
+                              borderRadius: '6px',
+                              fontSize: '0.75rem',
+                              fontWeight: '600'
+                            }}>
+                              {threat.status}
+                            </div>
+                            <div className="activity-date" style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                              {formatDate(test.createdAt)}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="activity-result">
-                        <div className={`activity-status ${(test.result.isPhishing || test.result.isMalware || test.result.isClone || test.result.isScam)
-                          ? 'threat'
-                          : 'safe'
-                          }`}>
-                          {getTestResultText(test.result, test.testType)}
-                        </div>
-                        <div className="activity-date">{formatDate(test.createdAt)}</div>
-                      </div>
-                    </div>
-                  ))
+                      );
+                    })}
+                  </>
                 ) : (
                   <div className="empty-state">
                     <Activity className="empty-icon" />
-                    <p className="empty-title">No recent activity</p>
-                    <p className="empty-description">Start scanning to see your activity here</p>
+                    <p className="empty-title">No activities yet</p>
+                    <p className="empty-description">Start scanning to see your complete activity history here</p>
                   </div>
                 )}
               </div>

@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import Signup from './logins/Signup.jsx';
 import Home from './logins/Home.jsx';
 import Login from './logins/Login.jsx';
+import Dashboard from './logins/Dashboard.jsx';
 
 const App = () => {
   return (
@@ -13,6 +14,7 @@ const App = () => {
           <Route path="/Signup" element={<Signup />} />
           <Route path="/Login" element={<Login />} />
           <Route path="/Home" element={<Home />} />
+          <Route path="/Dashboard" element={<Dashboard />} />
         </Routes>
       </Router>
     </AuthProvider>

@@ -6,6 +6,7 @@ import PhishingPage from './PhishingPage';
 import MalwarePage from './MalwarePage';
 import ClonePage from './ClonePage';
 import ScamPage from './ScamPage';
+import Dashboard from './Dashboard';
 import './Home.css';
 import ProfilePage from './profile.jsx';
 const Home = () => {
@@ -69,6 +70,7 @@ const Home = () => {
   }, [activeSection]);
 
   const sidebarItems = [
+    { id: 'dashboard', name: 'Dashboard', icon: TrendingUp },
     { id: 'phishing', name: 'Phishing', icon: AlertTriangle },
     { id: 'malware', name: 'Malware Detection', icon: Bug },
     { id: 'clone', name: 'Clone Check', icon: Copy },
@@ -123,6 +125,8 @@ const Home = () => {
 
   const renderContent = () => {
     switch (activeSection) {
+      case 'dashboard':
+        return <Dashboard key={animationKey} />;
       case 'phishing':
         return <PhishingPage key={animationKey} />;
       case 'malware':

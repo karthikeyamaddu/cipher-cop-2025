@@ -29,7 +29,18 @@ app.post("/signup", signup);
 app.post("/login", login);
 app.post("/logout", logout);
 app.get('/checkAuth', protectRoute, (req, res) => {
-    res.status(200).json({ message: 'User is authenticated', user: req.user });
+    res.status(200).json({ 
+        message: 'User is authenticated', 
+        user: {
+            _id: req.user._id,
+            fullName: req.user.fullName,
+            email: req.user.email,
+            role: req.user.role,
+            emailVerified: req.user.emailVerified,
+            accountStatus: req.user.accountStatus,
+            createdAt: req.user.createdAt
+        }
+    });
 });
 
 app.get('/calldb', protectRoute, (req, res) => {
@@ -87,7 +98,7 @@ app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
         // Save test result to MongoDB
         const testResult = new TestResult({
             userId: req.user._id,
-            testType: 'phishing',
+            testType: 'phishing-url',
             inputData: {
                 url: inputUrl
             },
@@ -118,6 +129,14 @@ app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
         });
 
         await testResult.save();
+        
+        // Add test ID to user's testResults array and increment count
+        await User.findByIdAndUpdate(req.user._id, {
+            $push: { testResults: testResult._id },
+            $inc: { testCount: 1 }
+        });
+        
+        console.log(`✅ Test ${testResult._id} added to user ${req.user._id}`);
         
         // Format response for frontend
         const response = {
@@ -164,7 +183,279 @@ app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
     }
 });
 
-// Malware/Sandbox test result storage endpoint
+// ==================== EMAIL PHISHING STORAGE ====================
+app.post('/api/phishing/analyze-email-store', protectRoute, async (req, res) => {
+    const startTime = Date.now();
+    try {
+        const { emailData, mlResult } = req.body;
+        
+        if (!emailData || !mlResult) {
+            return res.status(400).json({ 
+                error: 'Email data and ML result are required',
+                success: false 
+            });
+        }
+
+        console.log(`✅ Storing email phishing test for user: ${req.user._id}`);
+        
+        const testResult = new TestResult({
+            userId: req.user._id,
+            testType: 'phishing-email',
+            inputData: {
+                emailSubject: emailData.subject || '',
+                senderEmail: emailData.senderEmail || '',
+                senderDomain: emailData.senderDomain || '',
+                replyTo: emailData.replyTo || '',
+                hasAttachment: emailData.hasAttachment || false,
+                urgentKeywords: emailData.urgentKeywords || false
+            },
+            result: {
+                isPhishing: mlResult.prediction === 'phishing',
+                threatLevel: mlResult.prediction === 'phishing' ? 'high' : 
+                            mlResult.probability > 0.3 ? 'medium' : 'low',
+                riskScore: Math.round(mlResult.probability * 100),
+                confidence: mlResult.confidence,
+                verdict: mlResult.prediction
+            },
+            details: {
+                mlPrediction: mlResult,
+                suspiciousKeywords: mlResult.features_used?.urgent_keywords || 0,
+                linkCount: mlResult.features_used?.links_count || 0,
+                linkDensity: mlResult.features_used?.link_density || 0,
+                htmlTags: mlResult.features_used?.html_tags || 0,
+                specialChars: mlResult.features_used?.special_chars || 0,
+                processingTime: Date.now() - startTime,
+                lastChecked: new Date().toLocaleString()
+            },
+            flags: mlResult.prediction === 'phishing' ? 
+                ['ML Detection: Phishing content detected'] : 
+                mlResult.probability > 0.3 ? ['ML Detection: Suspicious patterns found'] : 
+                ['ML Detection: Content appears legitimate'],
+            recommendations: mlResult.prediction === 'phishing' ? 
+                ['Do not click any links', 'Do not reply to this email', 'Report as spam'] : 
+                ['Email appears safe but remain cautious'],
+            insights: `ML Analysis: ${mlResult.prediction} with ${Math.round(mlResult.confidence * 100)}% confidence`,
+            processingTime: Date.now() - startTime,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent')
+        });
+        
+        await testResult.save();
+        
+        // Add test ID to user's testResults array and increment count
+        await User.findByIdAndUpdate(req.user._id, {
+            $push: { testResults: testResult._id },
+            $inc: { testCount: 1 }
+        });
+        
+        console.log(`✅ Test ${testResult._id} added to user ${req.user._id}`);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                testId: testResult._id,
+                message: 'Email phishing test stored successfully'
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Email phishing storage error:', error);
+        res.status(500).json({ 
+            error: 'Failed to store email test: ' + error.message,
+            success: false 
+        });
+    }
+});
+
+// ==================== CLONE DETECTION STORAGE ====================
+app.post('/api/clone/store', protectRoute, async (req, res) => {
+    const startTime = Date.now();
+    try {
+        const { url, analysisType, mlData, aiData, screenshot } = req.body;
+        
+        if (!analysisType) {
+            return res.status(400).json({ 
+                error: 'Analysis type is required',
+                success: false 
+            });
+        }
+
+        console.log(`✅ Storing clone detection test (${analysisType}) for user: ${req.user._id}`);
+        
+        // Determine test type
+        let testType = 'clone-combined';
+        if (analysisType === 'ml') testType = 'clone-ml';
+        if (analysisType === 'ai') testType = 'clone-ai';
+        
+        // Determine if clone detected
+        let isClone = false;
+        let threatLevel = 'low';
+        let riskScore = 0;
+        
+        if (analysisType === 'combined') {
+            const mlThreat = mlData?.result === 'Phishing';
+            const aiThreat = aiData?.decision === 'clone';
+            isClone = mlThreat || aiThreat;
+            threatLevel = isClone ? 'high' : aiData?.decision === 'suspicious' ? 'medium' : 'low';
+            riskScore = Math.max(
+                mlData?.confidence ? mlData.confidence * 100 : 0,
+                aiData?.score || 0
+            );
+        } else if (analysisType === 'ml') {
+            isClone = mlData?.result === 'Phishing';
+            threatLevel = isClone ? 'high' : 'low';
+            riskScore = mlData?.confidence ? mlData.confidence * 100 : 0;
+        } else if (analysisType === 'ai') {
+            isClone = aiData?.decision === 'clone';
+            threatLevel = aiData?.decision === 'clone' ? 'high' : 
+                         aiData?.decision === 'suspicious' ? 'medium' : 'low';
+            riskScore = aiData?.score || 0;
+        }
+        
+        const testResult = new TestResult({
+            userId: req.user._id,
+            testType: testType,
+            inputData: {
+                url: url || '',
+                screenshotName: screenshot?.name || ''
+            },
+            result: {
+                isClone: isClone,
+                threatLevel: threatLevel,
+                riskScore: Math.round(riskScore),
+                confidence: mlData?.confidence || aiData?.confidence || 0,
+                verdict: isClone ? 'clone' : 'legitimate'
+            },
+            details: {
+                mlAnalysis: mlData || null,
+                phishpediaResult: mlData || null,
+                geminiAnalysis: aiData || null,
+                aiAnalysis: aiData || null,
+                matchedBrand: mlData?.matched_brand || aiData?.signals?.brand_mismatch?.brand || 'unknown',
+                correctDomain: mlData?.correct_domain || 'unknown',
+                visualSimilarity: mlData?.confidence || 0,
+                detectionTime: mlData?.detection_time || 0,
+                processingTime: Date.now() - startTime,
+                lastChecked: new Date().toLocaleString()
+            },
+            flags: isClone ? ['Clone website detected', 'Brand impersonation'] : ['Website appears legitimate'],
+            recommendations: isClone ? 
+                ['Do not enter credentials', 'Verify official domain', 'Report this website'] : 
+                ['Website appears safe'],
+            insights: `${analysisType.toUpperCase()} Analysis: ${isClone ? 'Clone detected' : 'Legitimate website'}`,
+            processingTime: Date.now() - startTime,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent')
+        });
+        
+        await testResult.save();
+        
+        // Add test ID to user's testResults array and increment count
+        await User.findByIdAndUpdate(req.user._id, {
+            $push: { testResults: testResult._id },
+            $inc: { testCount: 1 }
+        });
+        
+        console.log(`✅ Test ${testResult._id} added to user ${req.user._id}`);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                testId: testResult._id,
+                message: 'Clone detection test stored successfully'
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Clone detection storage error:', error);
+        res.status(500).json({ 
+            error: 'Failed to store clone test: ' + error.message,
+            success: false 
+        });
+    }
+});
+
+// ==================== SCAM PHONE DETECTION STORAGE ====================
+app.post('/api/scam/store', protectRoute, async (req, res) => {
+    const startTime = Date.now();
+    try {
+        const { phoneNumber, score, verdict, providers, enhancedAnalysis, aiAnalysis, reportsCount } = req.body;
+        
+        if (!phoneNumber || score === undefined) {
+            return res.status(400).json({ 
+                error: 'Phone number and score are required',
+                success: false 
+            });
+        }
+
+        console.log(`✅ Storing scam detection test for user: ${req.user._id}`);
+        
+        // Hash phone number for privacy
+        const crypto = await import('crypto');
+        const phoneHash = crypto.createHash('sha256').update(phoneNumber).digest('hex');
+        
+        const testResult = new TestResult({
+            userId: req.user._id,
+            testType: 'scam-phone',
+            inputData: {
+                phoneNumberHash: phoneHash
+            },
+            result: {
+                isScam: score >= 50,
+                threatLevel: score >= 80 ? 'high' : score >= 50 ? 'medium' : 'low',
+                riskScore: score,
+                confidence: enhancedAnalysis?.confidence || 0.7,
+                verdict: verdict || 'unknown'
+            },
+            details: {
+                providers: providers || [],
+                enhancedAnalysis: enhancedAnalysis || null,
+                aiAnalysis: aiAnalysis || null,
+                reportsCount: reportsCount || 0,
+                fraudScore: score,
+                lineType: enhancedAnalysis?.line_type || 'unknown',
+                carrier: enhancedAnalysis?.carrier || 'unknown',
+                processingTime: Date.now() - startTime,
+                lastChecked: new Date().toLocaleString()
+            },
+            flags: score >= 50 ? ['High scam risk detected', 'Multiple fraud indicators'] : ['Number appears legitimate'],
+            recommendations: score >= 50 ? 
+                ['Do not answer calls from this number', 'Block this number', 'Report as scam'] : 
+                ['Number appears safe but remain cautious'],
+            insights: aiAnalysis?.explanation || `Scam risk score: ${score}/100`,
+            processingTime: Date.now() - startTime,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent')
+        });
+        
+        await testResult.save();
+        
+        // Add test ID to user's testResults array and increment count
+        await User.findByIdAndUpdate(req.user._id, {
+            $push: { testResults: testResult._id },
+            $inc: { testCount: 1 }
+        });
+        
+        console.log(`✅ Test ${testResult._id} added to user ${req.user._id}`);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                testId: testResult._id,
+                message: 'Scam detection test stored successfully'
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Scam detection storage error:', error);
+        res.status(500).json({ 
+            error: 'Failed to store scam test: ' + error.message,
+            success: false 
+        });
+    }
+});
+
+// ==================== MALWARE VIRUSTOTAL STORAGE ====================
 app.post('/api/malware/store', protectRoute, async (req, res) => {
     const startTime = Date.now();
     try {
@@ -206,6 +497,14 @@ app.post('/api/malware/store', protectRoute, async (req, res) => {
         
         await testResult.save();
         
+        // Add test ID to user's testResults array and increment count
+        await User.findByIdAndUpdate(req.user._id, {
+            $push: { testResults: testResult._id },
+            $inc: { testCount: 1 }
+        });
+        
+        console.log(`✅ Test ${testResult._id} added to user ${req.user._id}`);
+        
         res.status(200).json({
             success: true,
             data: {
@@ -232,8 +531,12 @@ app.get('/api/tests/history', protectRoute, async (req, res) => {
         const { page = 1, limit = 10, testType } = req.query;
         
         const query = { userId: req.user._id };
-        if (testType && ['phishing', 'malware', 'clone', 'scam', 'sandbox'].includes(testType)) {
-            query.testType = testType;
+        
+        // Filter by test type using regex to match prefixes
+        if (testType) {
+            // Use regex to match test types that start with the given prefix
+            // e.g., 'phishing' matches 'phishing-url' and 'phishing-email'
+            query.testType = { $regex: new RegExp(`^${testType}`) };
         }
         
         const tests = await TestResult.find(query)
@@ -246,14 +549,12 @@ app.get('/api/tests/history', protectRoute, async (req, res) => {
         
         res.status(200).json({
             success: true,
-            data: {
-                tests,
-                pagination: {
-                    current: page,
-                    total: Math.ceil(total / limit),
-                    count: tests.length,
-                    totalTests: total
-                }
+            data: tests,  // Return tests array directly for frontend compatibility
+            pagination: {
+                current: page,
+                total: Math.ceil(total / limit),
+                count: tests.length,
+                totalTests: total
             }
         });
         
@@ -652,6 +953,206 @@ app.put('/api/user/change-password', protectRoute, async (req, res) => {
         console.error('Password change error:', error);
         res.status(500).json({
             error: 'Failed to change password: ' + error.message,
+            success: false
+        });
+    }
+});
+
+// Get user profile endpoint
+app.get('/api/user/profile', protectRoute, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).select('-password');
+        
+        if (!user) {
+            return res.status(404).json({
+                error: 'User not found',
+                success: false
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                _id: user._id,
+                fullName: user.fullName,
+                email: user.email,
+                phone: user.phone,
+                role: user.role,
+                accountStatus: user.accountStatus,
+                emailVerified: user.emailVerified,
+                lastLogin: user.lastLogin,
+                loginCount: user.loginCount,
+                testCount: user.testCount || 0,
+                totalTests: user.testResults?.length || 0,
+                createdAt: user.createdAt,
+                updatedAt: user.updatedAt
+            }
+        });
+        
+    } catch (error) {
+        console.error('Profile fetch error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch profile: ' + error.message,
+            success: false
+        });
+    }
+});
+
+// Get ALL user's activities (all test results)
+app.get('/api/user/activities', protectRoute, async (req, res) => {
+    try {
+        const { limit = 20, page = 1 } = req.query;
+        
+        // Fetch ALL tests for this user (no filtering by type)
+        const tests = await TestResult.find({ userId: req.user._id })
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit))
+            .skip((parseInt(page) - 1) * parseInt(limit))
+            .select('testType inputData result createdAt');
+        
+        // Get total count for pagination
+        const totalCount = await TestResult.countDocuments({ userId: req.user._id });
+        
+        res.status(200).json({
+            success: true,
+            data: tests,
+            pagination: {
+                total: totalCount,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                pages: Math.ceil(totalCount / parseInt(limit))
+            }
+        });
+        
+    } catch (error) {
+        console.error('Activities fetch error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch activities: ' + error.message,
+            success: false
+        });
+    }
+});
+
+// Get user's test history with filtering (for feature pages)
+app.get('/api/tests/history', protectRoute, async (req, res) => {
+    try {
+        const { testType, limit = 10 } = req.query;
+        
+        // Build query
+        const query = { userId: req.user._id };
+        
+        // Filter by test type if provided (supports regex for multiple types)
+        if (testType) {
+            query.testType = { $regex: new RegExp(`^${testType}`) };
+        }
+        
+        // Fetch tests sorted by most recent
+        const tests = await TestResult.find(query)
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit))
+            .select('testType inputData result details createdAt');
+        
+        res.status(200).json({
+            success: true,
+            data: tests
+        });
+        
+    } catch (error) {
+        console.error('Test history fetch error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch test history: ' + error.message,
+            success: false
+        });
+    }
+});
+
+// Get dashboard statistics
+app.get('/api/dashboard/stats', protectRoute, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        
+        // Get all user tests
+        const allTests = await TestResult.find({ userId }).select('testType result.riskScore createdAt');
+        
+        // Calculate time ranges
+        const now = new Date();
+        const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+        const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+        
+        // Count tests by type
+        const testsByType = {
+            'phishing-url': 0,
+            'phishing-email': 0,
+            'clone-ai': 0,
+            'clone-ml': 0,
+            'clone-combined': 0,
+            'malware-virustotal': 0,
+            'malware-sandbox': 0,
+            'scam-phone': 0
+        };
+        
+        // Count tests by time period
+        let testsLast24h = 0;
+        let testsLast7d = 0;
+        let testsLast30d = 0;
+        
+        // Calculate average risk scores
+        let totalRiskScore = 0;
+        let riskScoreCount = 0;
+        
+        // Process all tests
+        allTests.forEach(test => {
+            // Count by type
+            if (testsByType.hasOwnProperty(test.testType)) {
+                testsByType[test.testType]++;
+            }
+            
+            // Count by time period
+            const testDate = new Date(test.createdAt);
+            if (testDate >= oneDayAgo) testsLast24h++;
+            if (testDate >= sevenDaysAgo) testsLast7d++;
+            if (testDate >= thirtyDaysAgo) testsLast30d++;
+            
+            // Calculate risk score average
+            if (test.result && typeof test.result.riskScore === 'number') {
+                totalRiskScore += test.result.riskScore;
+                riskScoreCount++;
+            }
+        });
+        
+        // Group tests for display
+        const groupedTests = {
+            phishing: testsByType['phishing-url'] + testsByType['phishing-email'],
+            clone: testsByType['clone-ai'] + testsByType['clone-ml'] + testsByType['clone-combined'],
+            malware: testsByType['malware-virustotal'] + testsByType['malware-sandbox'],
+            scam: testsByType['scam-phone']
+        };
+        
+        // Get recent tests (last 5)
+        const recentTests = await TestResult.find({ userId })
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .select('testType inputData result.riskScore result.threatLevel createdAt');
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                totalTests: allTests.length,
+                testsLast24h,
+                testsLast7d,
+                testsLast30d,
+                testsByType: groupedTests,
+                detailedTestsByType: testsByType,
+                averageRiskScore: riskScoreCount > 0 ? Math.round(totalRiskScore / riskScoreCount) : 0,
+                recentTests
+            }
+        });
+        
+    } catch (error) {
+        console.error('Dashboard stats error:', error);
+        res.status(500).json({
+            error: 'Failed to fetch dashboard statistics: ' + error.message,
             success: false
         });
     }
