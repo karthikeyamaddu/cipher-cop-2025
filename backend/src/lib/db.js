@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
+import { initGridFS } from './gridfs.js';
 
 let con = null;
+let gridFSBucket = null;
 
 export const connectDB = async () => {
   try {
@@ -9,9 +11,24 @@ export const connectDB = async () => {
       useUnifiedTopology: true,
     });
     console.log(`MONGO DB Connected: ${con.connection.host}`);
+    
+    // Initialize GridFS after connection
+    gridFSBucket = initGridFS(con.connection.db);
+    
   } catch (error) {
     console.error("MongoDB connection error: " + error.message);
   }
+};
+
+/**
+ * Get GridFS bucket instance
+ * @returns {GridFSBucket}
+ */
+export const getGridFSBucket = () => {
+  if (!gridFSBucket) {
+    throw new Error('GridFS not initialized. Database connection required.');
+  }
+  return gridFSBucket;
 };
 
 // User Schema

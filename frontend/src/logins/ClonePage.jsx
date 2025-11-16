@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Copy, Search, Globe, AlertTriangle, CheckCircle, TrendingUp, Users, Upload, Eye, FileImage, X, Brain, Cpu, Clock } from 'lucide-react';
+import CloneResultModal from '../components/CloneResultModal';
 
 const ClonePage = () => {
   const [url, setUrl] = useState('');
@@ -11,6 +12,10 @@ const ClonePage = () => {
   // Test history
   const [testHistory, setTestHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedTest, setSelectedTest] = useState(null);
 
   // Fetch test history on component mount
   useEffect(() => {
@@ -36,6 +41,17 @@ const ClonePage = () => {
     } finally {
       setIsLoadingHistory(false);
     }
+  };
+
+  // Modal functions
+  const openResultModal = (test) => {
+    setSelectedTest(test);
+    setIsModalOpen(true);
+  };
+
+  const closeResultModal = () => {
+    setIsModalOpen(false);
+    setTimeout(() => setSelectedTest(null), 300);
   };
 
   // API Configuration
@@ -392,17 +408,18 @@ const ClonePage = () => {
   };
 
   // Save clone detection result to database
-  const saveToDatabase = async (url, analysisType, mlData, aiData, screenshot) => {
+  const saveToDatabase = async (url, analysisType, mlData, aiData, screenshot, imageData) => {
     try {
       console.log('💾 Saving clone detection result to database...');
       
-      // Remove large logo_extraction data to prevent 413 Payload Too Large
+      // Remove large logo_extraction data to prevent payload issues
       const cleanMlData = mlData ? {
         ...mlData,
         logo_extraction: mlData.logo_extraction ? '[REMOVED - Too Large]' : null
       } : null;
       
-      const response = await fetch('http://localhost:5001/api/clone/store', {
+      // Use new endpoint with pre-uploaded image IDs
+      const response = await fetch('http://localhost:5001/api/clone/store-with-image-id', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -410,16 +427,22 @@ const ClonePage = () => {
         credentials: 'include',
         body: JSON.stringify({
           url: url || '',
-          analysisType: analysisType,
           mlData: cleanMlData,
           aiData: aiData || null,
-          screenshot: screenshot ? { name: screenshot.name } : null
+          imageData: imageData || null
         })
       });
 
       if (response.ok) {
         const result = await response.json();
         console.log('✅ Clone detection saved to database:', result.data.testId);
+        if (result.data.tags) {
+          console.log(`🏷️ Tags: ${result.data.tags.analysisType} | ${result.data.tags.inputType}`);
+        }
+        if (imageData) {
+          console.log(`✅ Linked images - Full: ${imageData.fullImageId}, Thumbnail: ${imageData.thumbnailId}`);
+          console.log(`📊 Compression: ${imageData.originalSize} → ${imageData.compressedSize} bytes`);
+        }
         fetchTestHistory(); // Refresh history
         return result;
       } else {
@@ -431,6 +454,33 @@ const ClonePage = () => {
     }
   };
 
+  // Upload image to GridFS (parallel with analysis)
+  const uploadImageParallel = async (file) => {
+    try {
+      console.log('📤 Uploading image to GridFS (parallel)...');
+      const formData = new FormData();
+      formData.append('screenshot', file);
+      
+      const response = await fetch('http://localhost:5001/api/images/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Image uploaded:', result.data);
+        return result.data;
+      } else {
+        console.error('❌ Image upload failed');
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Image upload error:', error);
+      return null;
+    }
+  };
+
   // Handle screenshot analysis
   const handleScreenshotAnalysis = async () => {
     if (!selectedFile) return;
@@ -438,9 +488,16 @@ const ClonePage = () => {
     setScanResult(null);
     
     try {
+      // Start image upload in parallel with analysis
+      const imageUploadPromise = uploadImageParallel(selectedFile);
+      
       if (analysisType === 'combined') {
-        // Call both services for screenshot analysis
-        const results = await callBothServices(url, selectedFile);
+        // Call both services for screenshot analysis (parallel with image upload)
+        const [results, imageData] = await Promise.all([
+          callBothServices(url, selectedFile),
+          imageUploadPromise
+        ]);
+        
         setScanResult({
           type: 'screenshot',
           target: selectedFile.name,
@@ -452,27 +509,34 @@ const ClonePage = () => {
           }
         });
         
-        // Save to database
+        // Save to database with image IDs
         await saveToDatabase(
           url,
           analysisType,
           results.ml.data,
           results.ai.data,
-          selectedFile
+          selectedFile,
+          imageData
         );
       } else {
-        // Call single service
+        // Call single service (parallel with image upload)
         let data;
+        let imageData;
         
         if (analysisType === 'ml') {
-          // Use proper ML workflow: upload then detect
+          // Use proper ML workflow: upload then detect (parallel with image upload)
           const uploadFormData = new FormData();
           uploadFormData.append('image', selectedFile);
           
-          const uploadResponse = await fetch(API_ENDPOINTS.ml.upload, {
-            method: 'POST',
-            body: uploadFormData
-          });
+          const [uploadResponse, imageUploadResult] = await Promise.all([
+            fetch(API_ENDPOINTS.ml.upload, {
+              method: 'POST',
+              body: uploadFormData
+            }),
+            imageUploadPromise
+          ]);
+          
+          imageData = imageUploadResult;
           
           if (!uploadResponse.ok) {
             throw new Error(`Upload failed: HTTP ${uploadResponse.status}`);
@@ -501,7 +565,7 @@ const ClonePage = () => {
           data = normalizeMlResponse(await detectResponse.json());
           
         } else if (analysisType === 'ai') {
-          // AI expects FormData
+          // AI expects FormData (parallel with image upload)
           const formData = new FormData();
           formData.append('screenshot', selectedFile);
           
@@ -509,10 +573,15 @@ const ClonePage = () => {
             formData.append('url', url.trim());
           }
           
-          const response = await fetch(API_ENDPOINTS.ai, {
-            method: 'POST',
-            body: formData
-          });
+          const [response, imageUploadResult] = await Promise.all([
+            fetch(API_ENDPOINTS.ai, {
+              method: 'POST',
+              body: formData
+            }),
+            imageUploadPromise
+          ]);
+          
+          imageData = imageUploadResult;
 
           if (!response.ok) {
             const errorData = await response.json();
@@ -533,13 +602,14 @@ const ClonePage = () => {
           }
         });
         
-        // Save to database
+        // Save to database with image IDs
         await saveToDatabase(
           url,
           analysisType,
           analysisType === 'ml' ? data : null,
           analysisType === 'ai' ? data : null,
-          selectedFile
+          selectedFile,
+          imageData
         );
       }
     } catch (error) {
@@ -1085,7 +1155,15 @@ const ClonePage = () => {
                                    test.testType === 'clone-ml' ? 'ML' : 'Combined';
               
               return (
-                <div key={test._id} className="threat-item" style={{ animationDelay: `${index * 0.1}s` }}>
+                <div 
+                  key={test._id} 
+                  className="threat-item" 
+                  style={{ 
+                    animationDelay: `${index * 0.1}s`,
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => openResultModal(test)}
+                >
                   <div className="threat-info">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {test.inputData?.url ? <Globe size={16} /> : <FileImage size={16} />}
@@ -1106,6 +1184,19 @@ const ClonePage = () => {
                       }}>
                         {testTypeLabel}
                       </span>
+                      {test.tags && (
+                        <span style={{ 
+                          fontSize: '11px', 
+                          padding: '2px 6px', 
+                          background: '#1a1a2e', 
+                          borderRadius: '3px',
+                          color: '#9ca3af',
+                          border: '1px solid #374151'
+                        }}>
+                          {test.tags.inputType === 'both' ? '📸+🔗' : 
+                           test.tags.inputType === 'screenshot-only' ? '📸' : '🔗'}
+                        </span>
+                      )}
                     </div>
                     <span className="threat-time">{date}</span>
                   </div>
@@ -1124,6 +1215,13 @@ const ClonePage = () => {
           </div>
         )}
       </div>
+
+      {/* Clone Result Modal */}
+      <CloneResultModal 
+        testResult={selectedTest}
+        isOpen={isModalOpen}
+        onClose={closeResultModal}
+      />
     </div>
   );
 };

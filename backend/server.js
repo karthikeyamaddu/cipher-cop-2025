@@ -7,9 +7,20 @@ import { phishingDetector } from "./src/checks/phishing.js";
 import { TestResult } from "./src/models/TestResult.js";
 import cors from "cors";
 import dotenv from "dotenv";
+import multer from 'multer';
+import { processScreenshot, validateImage } from './src/lib/imageProcessor.js';
+import { uploadToGridFS, getFromGridFS } from './src/lib/gridfs.js';
 
 dotenv.config();
 const app = express();
+
+// Configure multer for memory storage
+const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB limit
+    }
+});
 
 app.use(
     cors({
@@ -274,6 +285,76 @@ app.post('/api/phishing/analyze-email-store', protectRoute, async (req, res) => 
 });
 
 // ==================== CLONE DETECTION STORAGE ====================
+// ==================== IMAGE UPLOAD ENDPOINT (PARALLEL) ====================
+app.post('/api/images/upload', protectRoute, upload.single('screenshot'), async (req, res) => {
+    try {
+        console.log('📤 Image upload started (parallel processing)');
+        
+        if (!req.file) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'No image file provided' 
+            });
+        }
+        
+        console.log(`📷 Processing uploaded image: ${req.file.originalname}`);
+        
+        // Validate image
+        await validateImage(req.file.buffer, req.file.mimetype, req.file.size);
+        
+        // Process screenshot (compress and create thumbnail)
+        const processed = await processScreenshot(req.file.buffer, req.file.originalname);
+        
+        // Upload full image to GridFS
+        const fullImageId = await uploadToGridFS(
+            processed.full.buffer, 
+            `full_${req.file.originalname}.webp`,
+            {
+                userId: req.user._id,
+                type: 'full',
+                originalName: req.file.originalname
+            }
+        );
+        
+        // Upload thumbnail to GridFS
+        const thumbnailId = await uploadToGridFS(
+            processed.thumbnail.buffer, 
+            `thumb_${req.file.originalname}.webp`,
+            {
+                userId: req.user._id,
+                type: 'thumbnail',
+                originalName: req.file.originalname
+            }
+        );
+        
+        console.log(`✅ Images uploaded to GridFS (parallel):`);
+        console.log(`  Full image ID: ${fullImageId}`);
+        console.log(`  Thumbnail ID: ${thumbnailId}`);
+        console.log(`  Original: ${processed.originalSize} bytes`);
+        console.log(`  Compressed: ${processed.full.size + processed.thumbnail.size} bytes`);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                fullImageId: fullImageId,
+                thumbnailId: thumbnailId,
+                screenshotName: req.file.originalname,
+                imageFormat: 'webp',
+                originalSize: processed.originalSize,
+                compressedSize: processed.full.size + processed.thumbnail.size
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Image upload failed:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message || 'Failed to upload image'
+        });
+    }
+});
+
+// ==================== CLONE DETECTION STORAGE ====================
 app.post('/api/clone/store', protectRoute, async (req, res) => {
     const startTime = Date.now();
     try {
@@ -377,6 +458,373 @@ app.post('/api/clone/store', protectRoute, async (req, res) => {
         res.status(500).json({ 
             error: 'Failed to store clone test: ' + error.message,
             success: false 
+        });
+    }
+});
+
+// ==================== CLONE DETECTION WITH IMAGE STORAGE ====================
+app.post('/api/clone/store-with-image', protectRoute, upload.single('screenshot'), async (req, res) => {
+    const startTime = Date.now();
+    try {
+        console.log('📸 Clone detection with image upload started');
+        
+        // Parse analysis data from form
+        const analysisData = JSON.parse(req.body.analysisData || '{}');
+        const { aiData, mlData, url } = analysisData;
+        
+        let fullImageId = null;
+        let thumbnailId = null;
+        let originalSize = 0;
+        let compressedSize = 0;
+        let screenshotName = null;
+        
+        // Process image if uploaded
+        if (req.file) {
+            console.log(`📷 Processing uploaded image: ${req.file.originalname}`);
+            
+            // Validate image
+            await validateImage(req.file.buffer, req.file.mimetype, req.file.size);
+            
+            // Process screenshot (compress and create thumbnail)
+            const processed = await processScreenshot(req.file.buffer, req.file.originalname);
+            
+            // Upload full image to GridFS
+            fullImageId = await uploadToGridFS(
+                processed.full.buffer, 
+                `full_${req.file.originalname}.webp`,
+                {
+                    userId: req.user._id,
+                    type: 'full',
+                    originalName: req.file.originalname
+                }
+            );
+            
+            // Upload thumbnail to GridFS
+            thumbnailId = await uploadToGridFS(
+                processed.thumbnail.buffer, 
+                `thumb_${req.file.originalname}.webp`,
+                {
+                    userId: req.user._id,
+                    type: 'thumbnail',
+                    originalName: req.file.originalname
+                }
+            );
+            
+            originalSize = processed.originalSize;
+            compressedSize = processed.full.size + processed.thumbnail.size;
+            screenshotName = req.file.originalname;
+            
+            console.log(`✅ Images uploaded to GridFS:`);
+            console.log(`  Full image ID: ${fullImageId}`);
+            console.log(`  Thumbnail ID: ${thumbnailId}`);
+        }
+        
+        // Determine test type based on analysis data
+        let testType = 'clone-combined'; // Default
+        if (aiData && !mlData) testType = 'clone-ai';
+        else if (mlData && !aiData) testType = 'clone-ml';
+        
+        // Determine overall result
+        const aiIsClone = aiData?.decision === 'clone' || aiData?.isClone;
+        const mlIsClone = mlData?.result === 'Phishing' || mlData?.isClone;
+        const isClone = aiIsClone || mlIsClone;
+        
+        // Calculate risk score (prioritize AI if available)
+        const aiRiskScore = aiData?.score || aiData?.riskScore || 0;
+        const mlRiskScore = mlData?.confidence ? mlData.confidence * 100 : 0;
+        const riskScore = aiRiskScore || mlRiskScore || 0;
+        
+        // Determine threat level
+        let threatLevel = 'low';
+        if (riskScore >= 70) threatLevel = 'high';
+        else if (riskScore >= 40) threatLevel = 'medium';
+        
+        // Create test result
+        const testResult = new TestResult({
+            userId: req.user._id,
+            testType: testType,
+            inputData: {
+                url: url,
+                screenshotName: screenshotName,
+                fullImageId: fullImageId,
+                thumbnailId: thumbnailId,
+                imageFormat: 'webp',
+                originalSize: originalSize,
+                compressedSize: compressedSize
+            },
+            result: {
+                isClone: isClone,
+                threatLevel: threatLevel,
+                riskScore: riskScore,
+                confidence: Math.max(aiData?.confidence || 0, mlData?.confidence || 0)
+            },
+            details: {
+                // AI Analysis (Gemini)
+                aiAnalysis: aiData ? {
+                    decision: aiData.decision,
+                    score: aiData.score || aiData.riskScore,
+                    detectedBrand: aiData.detectedBrand,
+                    signals: aiData.signals,
+                    recommendations: aiData.recommendations,
+                    confidence: aiData.confidence
+                } : null,
+                
+                // ML Analysis (Phishpedia)
+                mlAnalysis: mlData ? {
+                    result: mlData.result,
+                    matchedBrand: mlData.matched_brand,
+                    confidence: mlData.confidence,
+                    legitimateDomain: mlData.legitimate_domain,
+                    detectionTime: mlData.detection_time,
+                    phishpediaResult: mlData
+                } : null,
+                
+                processingTime: Date.now() - startTime,
+                lastChecked: new Date().toISOString()
+            },
+            flags: [],
+            recommendations: aiData?.recommendations || [],
+            insights: aiData?.insights || mlData?.insights || 'Clone detection analysis completed.',
+            status: 'completed',
+            processingTime: Date.now() - startTime
+        });
+        
+        // Save to database
+        await testResult.save();
+        
+        // Update user test count
+        await User.findByIdAndUpdate(req.user._id, {
+            $push: { testResults: testResult._id },
+            $inc: { testCount: 1 }
+        });
+        
+        console.log(`✅ Clone detection with image saved: ${testResult._id}`);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                testId: testResult._id,
+                testType: testType,
+                isClone: isClone,
+                riskScore: riskScore,
+                threatLevel: threatLevel,
+                fullImageId: fullImageId,
+                thumbnailId: thumbnailId,
+                originalSize: originalSize,
+                compressedSize: compressedSize,
+                processingTime: Date.now() - startTime
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Clone detection with image failed:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message || 'Failed to save clone detection result with image'
+        });
+    }
+});
+
+// ==================== CLONE DETECTION WITH IMAGE IDS (PARALLEL) ====================
+app.post('/api/clone/store-with-image-id', protectRoute, async (req, res) => {
+    const startTime = Date.now();
+    try {
+        console.log('💾 Saving clone detection with pre-uploaded images');
+        
+        const { aiData, mlData, url, imageData } = req.body;
+        
+        // Extract image data
+        const fullImageId = imageData?.fullImageId;
+        const thumbnailId = imageData?.thumbnailId;
+        const screenshotName = imageData?.screenshotName;
+        const originalSize = imageData?.originalSize;
+        const compressedSize = imageData?.compressedSize;
+        
+        // Determine test type based on analysis data
+        let testType = 'clone-combined'; // Default
+        if (aiData && !mlData) testType = 'clone-ai';
+        else if (mlData && !aiData) testType = 'clone-ml';
+        
+        // Determine overall result
+        const aiIsClone = aiData?.decision === 'clone' || aiData?.isClone;
+        const mlIsClone = mlData?.result === 'Phishing' || mlData?.isClone;
+        const isClone = aiIsClone || mlIsClone;
+        
+        // Calculate risk score (prioritize AI if available)
+        const aiRiskScore = aiData?.score || aiData?.riskScore || 0;
+        const mlRiskScore = mlData?.confidence ? mlData.confidence * 100 : 0;
+        const riskScore = aiRiskScore || mlRiskScore || 0;
+        
+        // Determine threat level
+        let threatLevel = 'low';
+        if (riskScore >= 70) threatLevel = 'high';
+        else if (riskScore >= 40) threatLevel = 'medium';
+        
+        // Create test result
+        const testResult = new TestResult({
+            userId: req.user._id,
+            testType: testType,
+            inputData: {
+                url: url,
+                screenshotName: screenshotName,
+                fullImageId: fullImageId,
+                thumbnailId: thumbnailId,
+                imageFormat: 'webp',
+                originalSize: originalSize,
+                compressedSize: compressedSize
+            },
+            result: {
+                isClone: isClone,
+                threatLevel: threatLevel,
+                riskScore: riskScore,
+                confidence: Math.max(aiData?.confidence || 0, mlData?.confidence || 0)
+            },
+            details: {
+                // AI Analysis (Gemini)
+                aiAnalysis: aiData ? {
+                    decision: aiData.decision,
+                    score: aiData.score || aiData.riskScore,
+                    detectedBrand: aiData.detectedBrand,
+                    signals: aiData.signals,
+                    recommendations: aiData.recommendations,
+                    confidence: aiData.confidence
+                } : null,
+                
+                // ML Analysis (Phishpedia)
+                mlAnalysis: mlData ? {
+                    result: mlData.result,
+                    matchedBrand: mlData.matched_brand,
+                    confidence: mlData.confidence,
+                    legitimateDomain: mlData.legitimate_domain,
+                    detectionTime: mlData.detection_time,
+                    phishpediaResult: mlData
+                } : null,
+                
+                processingTime: Date.now() - startTime,
+                lastChecked: new Date().toISOString()
+            },
+            flags: [],
+            recommendations: aiData?.recommendations || [],
+            insights: aiData?.insights || mlData?.insights || 'Clone detection analysis completed.',
+            
+            // Tags for filtering and analytics
+            tags: {
+                analysisType: testType === 'clone-ai' ? 'ai' : testType === 'clone-ml' ? 'ml' : 'combined',
+                inputType: (url && screenshotName) ? 'both' : screenshotName ? 'screenshot-only' : 'url-only'
+            },
+            
+            status: 'completed',
+            processingTime: Date.now() - startTime
+        });
+        
+        // Save to database
+        await testResult.save();
+        
+        // Update user test count
+        await User.findByIdAndUpdate(req.user._id, {
+            $push: { testResults: testResult._id },
+            $inc: { testCount: 1 }
+        });
+        
+        console.log(`✅ Clone detection saved with image IDs: ${testResult._id}`);
+        console.log(`🏷️ Tags: ${testResult.tags.analysisType} | ${testResult.tags.inputType}`);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                testId: testResult._id,
+                testType: testType,
+                isClone: isClone,
+                riskScore: riskScore,
+                threatLevel: threatLevel,
+                tags: testResult.tags,
+                processingTime: Date.now() - startTime
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Clone detection save failed:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message || 'Failed to save clone detection result'
+        });
+    }
+});
+
+// ==================== IMAGE RETRIEVAL ENDPOINTS ====================
+
+// Get full image from GridFS
+app.get('/api/images/full/:fileId', protectRoute, async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        
+        console.log(`📥 Retrieving full image: ${fileId}`);
+        
+        // Get file stream from GridFS
+        const downloadStream = await getFromGridFS(fileId);
+        
+        // Set headers
+        res.set({
+            'Content-Type': 'image/webp',
+            'Cache-Control': 'public, max-age=86400', // Cache for 24 hours
+            'Access-Control-Allow-Origin': 'http://localhost:5173',
+            'Access-Control-Allow-Credentials': 'true'
+        });
+        
+        // Handle stream errors
+        downloadStream.on('error', (error) => {
+            console.error(`❌ Error streaming full image ${fileId}:`, error);
+            if (!res.headersSent) {
+                res.status(404).json({ success: false, error: 'Image not found' });
+            }
+        });
+        
+        // Pipe stream to response
+        downloadStream.pipe(res);
+        
+    } catch (error) {
+        console.error(`❌ Failed to retrieve full image ${req.params.fileId}:`, error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to retrieve image' 
+        });
+    }
+});
+
+// Get thumbnail from GridFS
+app.get('/api/images/thumbnail/:fileId', protectRoute, async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        
+        console.log(`📥 Retrieving thumbnail: ${fileId}`);
+        
+        // Get file stream from GridFS
+        const downloadStream = await getFromGridFS(fileId);
+        
+        // Set headers
+        res.set({
+            'Content-Type': 'image/webp',
+            'Cache-Control': 'public, max-age=86400', // Cache for 24 hours
+            'Access-Control-Allow-Origin': 'http://localhost:5173',
+            'Access-Control-Allow-Credentials': 'true'
+        });
+        
+        // Handle stream errors
+        downloadStream.on('error', (error) => {
+            console.error(`❌ Error streaming thumbnail ${fileId}:`, error);
+            if (!res.headersSent) {
+                res.status(404).json({ success: false, error: 'Thumbnail not found' });
+            }
+        });
+        
+        // Pipe stream to response
+        downloadStream.pipe(res);
+        
+    } catch (error) {
+        console.error(`❌ Failed to retrieve thumbnail ${req.params.fileId}:`, error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to retrieve thumbnail' 
         });
     }
 });
