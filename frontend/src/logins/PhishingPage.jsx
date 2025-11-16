@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Mail, Link, Shield, Search, FileText, Activity, TrendingUp, Users, CheckCircle, ChevronDown, Settings, Eye, Brain, Clock, ExternalLink } from 'lucide-react';
+import ResultModal from '../components/ResultModal';
+import PhishingResultDetails from '../components/results/PhishingResultDetails';
 
 
 const PhishingPage = () => {
@@ -22,6 +24,23 @@ const PhishingPage = () => {
   // Test history
   const [testHistory, setTestHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  
+  // Result modal
+  const [selectedTest, setSelectedTest] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  const openResultModal = (test) => {
+    setSelectedTest(test);
+    setIsModalOpen(true);
+  };
+  
+  const closeResultModal = () => {
+    setIsModalOpen(false);
+    // Refresh history to update viewed status
+    setTimeout(() => {
+      fetchTestHistory();
+    }, 500);
+  };
 
   // Fetch test history on component mount
   useEffect(() => {
@@ -764,15 +783,51 @@ const PhishingPage = () => {
             {testHistory.map((test, index) => {
               const isUrl = test.testType === 'phishing-url';
               const isEmail = test.testType === 'phishing-email';
-              const threatLevel = test.result?.threatLevel || 'low';
-              const riskScore = test.result?.riskScore || 0;
+              
+              // Use AI risk score if available, otherwise use combined or traditional
+              const aiRiskScore = test.details?.aiAnalysis?.riskScore;
+              const riskScore = aiRiskScore || test.result?.combinedRiskScore || test.result?.riskScore || 0;
+              
+              // Use AI threat level if available
+              const aiThreatLevel = test.details?.aiAnalysis?.threatLevel;
+              const threatLevel = aiThreatLevel || test.result?.threatLevel || 'low';
+              
               const target = isUrl ? test.inputData?.url : 
                             isEmail ? test.inputData?.email || 'Email Analysis' : 
                             'Unknown';
               const date = new Date(test.createdAt).toLocaleString();
               
               return (
-                <div key={test._id} className="threat-item" style={{ animationDelay: `${index * 0.1}s` }}>
+                <div 
+                  key={test._id} 
+                  className="threat-item clickable" 
+                  style={{ 
+                    animationDelay: `${index * 0.1}s`,
+                    cursor: 'pointer',
+                    position: 'relative'
+                  }}
+                  onClick={() => openResultModal(test)}
+                  title="Click to view full details"
+                >
+                  {/* Unseen indicator */}
+                  {!test.viewedByUser && (
+                    <div 
+                      className="unseen-indicator" 
+                      style={{
+                        position: 'absolute',
+                        left: '-10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '8px',
+                        height: '8px',
+                        background: '#3b82f6',
+                        borderRadius: '50%',
+                        animation: 'pulse 2s infinite'
+                      }}
+                      title="New result - Click to view"
+                    />
+                  )}
+                  
                   <div className="threat-info">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {isUrl ? <Link size={16} /> : <Mail size={16} />}
@@ -802,6 +857,15 @@ const PhishingPage = () => {
           </div>
         )}
       </div>
+      
+      {/* Result Modal */}
+      <ResultModal 
+        testResult={selectedTest}
+        isOpen={isModalOpen}
+        onClose={closeResultModal}
+      >
+        {selectedTest && <PhishingResultDetails testResult={selectedTest} />}
+      </ResultModal>
     </div>
   );
 };
@@ -810,6 +874,22 @@ export default PhishingPage;
 
 /* Enhanced CSS for cybersecurity-themed email analysis */
 const styles = `
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+}
+
+.threat-item.clickable:hover {
+  transform: translateX(5px);
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .integrated-detection-section {
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
   border-radius: 16px;

@@ -128,6 +128,12 @@ app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
             processingTime
         });
 
+        // Debug: Log what we're about to save
+        console.log('🔍 DEBUG - About to save:');
+        console.log('  aiAnalysis:', analysis.aiAnalysis);
+        console.log('  aiRiskScore:', analysis.aiRiskScore);
+        console.log('  details.aiAnalysis:', testResult.details.aiAnalysis);
+
         await testResult.save();
         
         // Add test ID to user's testResults array and increment count
@@ -539,11 +545,13 @@ app.get('/api/tests/history', protectRoute, async (req, res) => {
             query.testType = { $regex: new RegExp(`^${testType}`) };
         }
         
-        const tests = await TestResult.find(query)
+        let tests = await TestResult.find(query)
             .sort({ createdAt: -1 })
             .limit(limit * 1)
-            .skip((page - 1) * limit)
-            .select('-details -__v'); // Exclude detailed data for performance
+            .skip((page - 1) * limit);
+        
+        // Convert to plain objects
+        tests = tests.map(test => test.toObject());
         
         const total = await TestResult.countDocuments(query);
         
@@ -1047,10 +1055,20 @@ app.get('/api/tests/history', protectRoute, async (req, res) => {
         }
         
         // Fetch tests sorted by most recent
-        const tests = await TestResult.find(query)
+        let tests = await TestResult.find(query)
             .sort({ createdAt: -1 })
-            .limit(parseInt(limit))
-            .select('testType inputData result details createdAt');
+            .limit(parseInt(limit));
+        
+        // Convert to plain objects
+        tests = tests.map(test => test.toObject());
+        
+        // Debug: Log what we're returning
+        if (tests.length > 0) {
+            console.log('🔍 DEBUG - Returning test history:');
+            console.log('  First test has details?', !!tests[0].details);
+            console.log('  First test details.aiAnalysis?', tests[0].details?.aiAnalysis);
+            console.log('  First test FULL OBJECT:', JSON.stringify(tests[0], null, 2));
+        }
         
         res.status(200).json({
             success: true,
@@ -1061,6 +1079,42 @@ app.get('/api/tests/history', protectRoute, async (req, res) => {
         console.error('Test history fetch error:', error);
         res.status(500).json({
             error: 'Failed to fetch test history: ' + error.message,
+            success: false
+        });
+    }
+});
+
+// Mark test as viewed by user
+app.put('/api/tests/:testId/mark-viewed', protectRoute, async (req, res) => {
+    try {
+        const { testId } = req.params;
+        
+        // Update test result
+        const testResult = await TestResult.findOneAndUpdate(
+            { _id: testId, userId: req.user._id },
+            { 
+                viewedByUser: true,
+                viewedAt: new Date()
+            },
+            { new: true }
+        );
+        
+        if (!testResult) {
+            return res.status(404).json({
+                success: false,
+                error: 'Test not found'
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            message: 'Test marked as viewed'
+        });
+        
+    } catch (error) {
+        console.error('Mark viewed error:', error);
+        res.status(500).json({
+            error: 'Failed to mark test as viewed: ' + error.message,
             success: false
         });
     }
