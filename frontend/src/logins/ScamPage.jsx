@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, AlertTriangle, Search, Phone, TrendingUp, Users, Shield, CheckCircle, Database, CreditCard, Loader, Zap, Brain, Eye, Lock, Cpu, Clock, FileText } from 'lucide-react';
+import ResultModal from '../components/ResultModal';
+import ScamResultDetails from '../components/results/ScamResultDetails';
 
 const ScamPage = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -20,6 +22,10 @@ const ScamPage = () => {
   // Test history
   const [testHistory, setTestHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  
+  // Result modal
+  const [selectedTest, setSelectedTest] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Fetch test history on component mount
   useEffect(() => {
@@ -45,6 +51,20 @@ const ScamPage = () => {
     } finally {
       setIsLoadingHistory(false);
     }
+  };
+
+  // Modal functions
+  const openResultModal = (test) => {
+    setSelectedTest(test);
+    setIsModalOpen(true);
+  };
+
+  const closeResultModal = () => {
+    setIsModalOpen(false);
+    setTimeout(() => {
+      setSelectedTest(null);
+      fetchTestHistory();
+    }, 300);
   };
 
   // Save scam phone result to database
@@ -675,7 +695,15 @@ const ScamPage = () => {
               const verdict = test.result?.verdict || 'Unknown';
               
               return (
-                <div key={test._id} className="threat-item" style={{ animationDelay: `${index * 0.1}s` }}>
+                <div 
+                  key={test._id} 
+                  className="threat-item" 
+                  style={{ 
+                    animationDelay: `${index * 0.1}s`,
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => openResultModal(test)}
+                >
                   <div className="threat-info">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <Phone size={16} />
@@ -703,6 +731,15 @@ const ScamPage = () => {
           </div>
         )}
       </div>
+
+      {/* Result Modal */}
+      <ResultModal 
+        testResult={selectedTest}
+        isOpen={isModalOpen}
+        onClose={closeResultModal}
+      >
+        {selectedTest && <ScamResultDetails testResult={selectedTest} />}
+      </ResultModal>
     </div>
   );
 };

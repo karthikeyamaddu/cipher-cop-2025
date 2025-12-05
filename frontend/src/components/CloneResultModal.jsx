@@ -7,7 +7,7 @@ const CloneResultModal = ({ testResult, isOpen, onClose }) => {
 
   const { result, details, inputData, tags, createdAt } = testResult;
   const isClone = result?.isClone || false;
-  const riskScore = result?.riskScore || 0;
+  const riskScore = Math.round((result?.riskScore || 0) * 100) / 100; // Round to 2 decimals
   const threatLevel = result?.threatLevel || 'low';
 
   // Determine color based on risk

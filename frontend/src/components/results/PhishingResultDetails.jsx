@@ -8,7 +8,9 @@ const PhishingResultDetails = ({ testResult }) => {
   // Debug: Log the data structure
   console.log('📊 PhishingResultDetails - Full testResult:', testResult);
   console.log('📊 Result object:', result);
-  console.log('📊 Details object:', details);
+  console.log('📊 Details object:', details);  console.log('📧 InputData object:', inputData);
+  console.log('📧 Email content exists?', !!inputData?.content);
+  console.log('📧 Email content value:', inputData?.content);
   
   // Extract individual scores for breakdown
   // Handle both old and new data structures
@@ -24,7 +26,7 @@ const PhishingResultDetails = ({ testResult }) => {
   // Main display score - Show what the user sees in the analysis result
   // Priority: AI score (85) > Combined (40) > Traditional (10)
   // If AI score exists, ALWAYS use it (this matches the "AI Risk Score 85/100" display)
-  const mainRiskScore = aiRiskScore || combinedRiskScore || traditionalRiskScore || 0;
+  const mainRiskScore = Math.round((aiRiskScore || combinedRiskScore || traditionalRiskScore || 0) * 100) / 100; // Round to 2 decimals
   
   // Extract threat level - prioritize AI analysis threat level
   const threatLevel = details?.aiAnalysis?.threatLevel || 
@@ -179,6 +181,27 @@ const PhishingResultDetails = ({ testResult }) => {
             <div className="info-item">
               <span className="info-label">Sender:</span>
               <span className="info-value">{inputData.senderEmail}</span>
+            </div>
+          )}
+          {inputData?.content && (
+            <div className="info-item" style={{ gridColumn: '1 / -1' }}>
+              <span className="info-label">Email Content:</span>
+              <div style={{ 
+                marginTop: '8px',
+                padding: '12px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: '6px',
+                maxHeight: '200px',
+                overflowY: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                fontSize: '14px',
+                lineHeight: '1.6',
+                color: '#e5e7eb'
+              }}>
+                {inputData.content}
+                {console.log('📧 Email content in modal:', inputData.content)}
+              </div>
             </div>
           )}
           {details?.domainAge && (

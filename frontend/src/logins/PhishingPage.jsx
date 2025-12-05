@@ -86,7 +86,8 @@ const PhishingPage = () => {
             senderDomain: senderDomain || null,
             replyTo: replyTo || null,
             hasAttachment: hasAttachment,
-            urgentKeywords: urgentKeywords
+            urgentKeywords: urgentKeywords,
+            content: emailContent || '' // Send email content to backend
           },
           mlResult: mlResult
         })

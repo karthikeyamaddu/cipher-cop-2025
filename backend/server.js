@@ -214,6 +214,9 @@ app.post('/api/phishing/analyze-email-store', protectRoute, async (req, res) => 
         }
 
         console.log(`✅ Storing email phishing test for user: ${req.user._id}`);
+        console.log('📧 Email data received:', emailData);
+        console.log('📧 Email content:', emailData.content);
+        console.log('📧 Email content length:', emailData.content?.length || 0);
         
         const testResult = new TestResult({
             userId: req.user._id,
@@ -224,7 +227,8 @@ app.post('/api/phishing/analyze-email-store', protectRoute, async (req, res) => 
                 senderDomain: emailData.senderDomain || '',
                 replyTo: emailData.replyTo || '',
                 hasAttachment: emailData.hasAttachment || false,
-                urgentKeywords: emailData.urgentKeywords || false
+                urgentKeywords: emailData.urgentKeywords || false,
+                content: emailData.content || '' // Store email content for display
             },
             result: {
                 isPhishing: mlResult.prediction === 'phishing',
@@ -266,6 +270,8 @@ app.post('/api/phishing/analyze-email-store', protectRoute, async (req, res) => 
         });
         
         console.log(`✅ Test ${testResult._id} added to user ${req.user._id}`);
+        console.log('📧 Final saved inputData:', testResult.inputData);
+        console.log('📧 Final saved content:', testResult.inputData.content);
         
         res.status(200).json({
             success: true,
@@ -844,7 +850,7 @@ app.post('/api/scam/store', protectRoute, async (req, res) => {
 
         console.log(`✅ Storing scam detection test for user: ${req.user._id}`);
         
-        // Hash phone number for privacy
+        // Hash phone number for privacy (but also store original for display)
         const crypto = await import('crypto');
         const phoneHash = crypto.createHash('sha256').update(phoneNumber).digest('hex');
         
@@ -852,7 +858,8 @@ app.post('/api/scam/store', protectRoute, async (req, res) => {
             userId: req.user._id,
             testType: 'scam-phone',
             inputData: {
-                phoneNumberHash: phoneHash
+                phoneNumber: phoneNumber, // Store for display in modal
+                phoneNumberHash: phoneHash // Store hash for privacy/security
             },
             result: {
                 isScam: score >= 50,
