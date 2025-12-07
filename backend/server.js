@@ -10,6 +10,10 @@ import dotenv from "dotenv";
 import multer from 'multer';
 import { processScreenshot, validateImage } from './src/lib/imageProcessor.js';
 import { uploadToGridFS, getFromGridFS } from './src/lib/gridfs.js';
+import { serverAdapter } from './src/admin/bullBoard.js';
+import adminRoutes from './src/admin/adminRoutes.js';
+import { phishingQueue, cloneQueue, malwareQueue, scamQueue } from './src/queues/index.js';
+import { getQueuePosition, checkConcurrentLimit, addJobToQueue } from './src/queues/helpers.js';
 
 dotenv.config();
 const app = express();
@@ -58,16 +62,15 @@ app.get('/calldb', protectRoute, (req, res) => {
     res.status(200).json({ message: 'User is authenticated', user: req.user });
 });
 
-// Phishing detection endpoint
+// Phishing detection endpoint (QUEUED - Background Processing)
 app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
-    const startTime = Date.now();
     try {
         const { url } = req.body;
         
         if (!url) {
             return res.status(400).json({ 
-                error: 'URL is required',
-                success: false 
+                success: false,
+                error: 'URL is required'
             });
         }
 
@@ -76,16 +79,13 @@ app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
         let inputUrl = url.trim();
         
         try {
-            // Try parsing as full URL first
             new URL(inputUrl);
             isValidInput = true;
         } catch (urlError) {
-            // If that fails, try adding protocol and parsing again
             try {
                 new URL('http://' + inputUrl);
                 isValidInput = true;
             } catch (protocolError) {
-                // Check if it's a valid domain name pattern (more flexible)
                 const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-._]*[a-zA-Z0-9]\.[a-zA-Z]{2,}(\/.*)?$/;
                 if (domainRegex.test(inputUrl)) {
                     isValidInput = true;
@@ -95,18 +95,30 @@ app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
         
         if (!isValidInput) {
             return res.status(400).json({ 
-                error: 'Invalid URL or domain format. Please enter a valid URL or domain name.',
-                success: false 
+                success: false,
+                error: 'Invalid URL or domain format. Please enter a valid URL or domain name.'
             });
         }
 
-        console.log(`Received URL analysis request for: ${inputUrl}`);
-
-        // Perform phishing analysis
-        const analysis = await phishingDetector.analyzeUrl(inputUrl);
-        const processingTime = Date.now() - startTime;
+        // Check concurrent job limit (max 3)
+        const activeCount = await TestResult.countDocuments({
+            userId: req.user._id,
+            processingStatus: { $in: ['queued', 'processing'] }
+        });
         
-        // Save test result to MongoDB
+        if (activeCount >= 3) {
+            return res.status(429).json({
+                success: false,
+                error: `Maximum 3 concurrent analyses allowed. Please wait for existing analyses to complete.`
+            });
+        }
+
+        console.log(`🔄 [Queue] Queueing phishing analysis for: ${inputUrl}`);
+
+        // Get queue position
+        const queuePosition = await getQueuePosition('phishing-url');
+
+        // Create test result with status='queued'
         const testResult = new TestResult({
             userId: req.user._id,
             testType: 'phishing-url',
@@ -114,88 +126,55 @@ app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
                 url: inputUrl
             },
             result: {
-                isPhishing: analysis.isPhishing,
-                threatLevel: analysis.threatLevel || 'low',
-                riskScore: analysis.riskScore,
-                combinedRiskScore: analysis.combinedRiskScore || analysis.riskScore
+                isPhishing: false,
+                threatLevel: 'low',
+                riskScore: 0
             },
-            details: {
-                domainAge: analysis.details.domainAge || 'Unknown',
-                registrar: analysis.details.registrar || 'Unknown',
-                country: analysis.details.country || 'Unknown',
-                reputation: analysis.details.reputation,
-                similarDomains: analysis.details.similarDomains,
-                expiryDate: analysis.details.expiryDate,
-                nameServers: analysis.details.nameServers,
-                status: analysis.details.status,
-                privacyProtection: analysis.details.privacyProtection,
-                lastChecked: analysis.details.lastChecked,
-                aiAnalysis: analysis.aiAnalysis,
-                whoisData: analysis.whoisData
-            },
-            flags: analysis.flags,
-            recommendations: analysis.aiRecommendations || [],
-            insights: analysis.aiInsights || 'No AI insights available',
-            processingTime
+            processingStatus: 'queued',
+            queuePosition: queuePosition,
+            queuedAt: new Date(),
+            attempts: 0,
+            auditTrail: [{
+                status: 'queued',
+                timestamp: new Date(),
+                message: 'Analysis queued for background processing'
+            }]
         });
 
-        // Debug: Log what we're about to save
-        console.log('🔍 DEBUG - About to save:');
-        console.log('  aiAnalysis:', analysis.aiAnalysis);
-        console.log('  aiRiskScore:', analysis.aiRiskScore);
-        console.log('  details.aiAnalysis:', testResult.details.aiAnalysis);
-
         await testResult.save();
-        
+
         // Add test ID to user's testResults array and increment count
         await User.findByIdAndUpdate(req.user._id, {
             $push: { testResults: testResult._id },
             $inc: { testCount: 1 }
         });
-        
-        console.log(`✅ Test ${testResult._id} added to user ${req.user._id}`);
-        
-        // Format response for frontend
-        const response = {
-            success: true,
-            data: {
-                url: analysis.url,
-                domain: analysis.domain,
-                isPhishing: analysis.isPhishing,
-                threatLevel: analysis.threatLevel || 'low',
-                riskScore: analysis.riskScore,
-                combinedRiskScore: analysis.combinedRiskScore || analysis.riskScore,
-                flags: analysis.flags,
-                details: {
-                    domainAge: analysis.details.domainAge || 'Unknown',
-                    registrar: analysis.details.registrar || 'Unknown',
-                    country: analysis.details.country || 'Unknown',
-                    reputation: analysis.details.reputation,
-                    similarDomains: analysis.details.similarDomains,
-                    expiryDate: analysis.details.expiryDate,
-                    nameServers: analysis.details.nameServers,
-                    status: analysis.details.status,
-                    privacyProtection: analysis.details.privacyProtection,
-                    lastChecked: analysis.details.lastChecked
-                },
-                aiAnalysis: {
-                    enabled: analysis.aiAnalysis !== null,
-                    analysis: analysis.aiAnalysis,
-                    riskScore: analysis.aiRiskScore,
-                    recommendations: analysis.aiRecommendations || [],
-                    insights: analysis.aiInsights || 'No AI insights available'
-                },
-                whoisData: analysis.whoisData
-            }
-        };
 
-        res.status(200).json(response);
-        
+        // Add job to queue
+        await addJobToQueue('phishing-url', {
+            testId: testResult._id,
+            url: inputUrl,
+            userId: req.user._id
+        });
+
+        console.log(`✅ [Queue] Test ${testResult._id} queued at position ${queuePosition}`);
+
+        // Return immediately with testId for polling
+        res.status(200).json({
+            success: true,
+            message: 'Analysis queued successfully',
+            data: {
+                testId: testResult._id,
+                queuePosition: queuePosition,
+                status: 'queued',
+                estimatedWaitTime: queuePosition * 30 // Rough estimate: 30s per job
+            }
+        });
+
     } catch (error) {
-        console.error('Phishing analysis error:', error);
+        console.error('❌ [Queue] Phishing queue error:', error);
         res.status(500).json({ 
-            error: 'Analysis failed: ' + error.message,
-            success: false 
+            success: false,
+            error: 'Failed to queue analysis'
         });
     }
 });
@@ -1539,6 +1518,39 @@ app.get('/api/tests/history', protectRoute, async (req, res) => {
     }
 });
 
+// Get test status (Phase 0 - Polling endpoint)
+app.get('/api/tests/:testId/status', protectRoute, async (req, res) => {
+    try {
+        const { testId } = req.params;
+        
+        // Find test result (only user's own tests)
+        const testResult = await TestResult.findOne({
+            _id: testId,
+            userId: req.user._id
+        });
+        
+        if (!testResult) {
+            return res.status(404).json({
+                success: false,
+                error: 'Test not found'
+            });
+        }
+        
+        // Return test result wrapped in data object (frontend expects statusData.data.processingStatus)
+        res.status(200).json({
+            success: true,
+            data: testResult
+        });
+        
+    } catch (error) {
+        console.error('Test status fetch error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch test status'
+        });
+    }
+});
+
 // Mark test as viewed by user
 app.put('/api/tests/:testId/mark-viewed', protectRoute, async (req, res) => {
     try {
@@ -1746,6 +1758,16 @@ app.post('/api/user/verify-phone', protectRoute, async (req, res) => {
         });
     }
 });
+
+// ==================== BULL BOARD & ADMIN ROUTES ====================
+// Bull Board UI for queue monitoring
+app.use('/admin/queues', serverAdapter.getRouter());
+
+// Admin API routes
+app.use('/api/admin', adminRoutes);
+
+console.log('✅ Bull Board available at: http://localhost:5001/admin/queues');
+console.log('✅ Admin API available at: http://localhost:5001/api/admin/*');
 
 const PORT = 5001; 
 

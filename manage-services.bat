@@ -30,6 +30,8 @@ goto menu
 echo.
 echo [*] Available Services:
 echo.
+echo     REDIS - Redis Server (Windows)
+echo     WORKER - Phishing Worker (Background Queue)
 echo     5173 - Frontend
 echo     5001 - Backend (Node.js)
 echo     5003 - Clone-AI (Gemini)
@@ -41,10 +43,23 @@ echo     5006 - Phone-Scam Detection
 echo     5007 - ML-Phishing Detection
 echo     5008 - Email-ML-Phishing Detection
 echo.
-set /p selected_ports="Enter port numbers to start (space-separated, e.g., 5173 5001 5003): "
+set /p selected_ports="Enter services to start (space-separated, e.g., REDIS WORKER 5173 5001): "
 
 echo.
 echo [*] Starting selected services...
+
+echo " %selected_ports% " | findstr " REDIS " >nul
+if !errorlevel! == 0 (
+    start "Redis Server" cmd /c "C:\Redis\redis-server.exe"
+    echo ✅ Starting Redis Server (Windows)
+)
+
+echo " %selected_ports% " | findstr " WORKER " >nul
+if !errorlevel! == 0 (
+    cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
+    start "Phishing Worker" cmd /c "node src/workers/phishingWorker.js"
+    echo ✅ Starting Phishing Worker (Background Queue)
+)
 
 echo " %selected_ports% " | findstr " 5173 " >nul
 if !errorlevel! == 0 (
@@ -132,6 +147,13 @@ goto menu
 echo.
 echo [*] Starting all services...
 
+:: ---- REDIS SERVER (Windows) ----
+start "Redis Server" cmd /c "C:\Redis\redis-server.exe"
+
+:: ---- PHISHING WORKER (Background Queue) ----
+cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
+start "Phishing Worker" cmd /c "node src/workers/phishingWorker.js"
+
 :: ---- FRONTEND (5173) ----
 cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\frontend"
 if exist env.txt copy /Y env.txt .env >nul
@@ -189,7 +211,8 @@ goto menu
 echo.
 echo [*] Stopping all services...
 
-:: Kill by window title first
+:: Kill by window title first (Redis stays running)
+taskkill /FI "WINDOWTITLE eq Phishing Worker*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Frontend (5173)*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Backend (5001)*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Clone-AI (5003)*" /F >nul 2>&1
@@ -228,8 +251,25 @@ echo.
 echo [*] Checking service status...
 echo.
 
+:: Check Redis (port 6379) - faster check
+netstat -ano | findstr ":6379.*LISTENING" >nul 2>&1
+if %errorlevel% == 0 (
+    echo ✅ Redis Server ^(6379^): RUNNING
+) else (
+    echo ❌ Redis Server ^(6379^): NOT RUNNING
+)
+
+:: Check Worker (fast check - just verify node.exe is running)
+tasklist /FI "IMAGENAME eq node.exe" 2>nul | findstr "node.exe" >nul 2>&1
+if %errorlevel% == 0 (
+    echo ✅ Phishing Worker: RUNNING ^(node.exe detected^)
+) else (
+    echo ❌ Phishing Worker: NOT RUNNING
+)
+
+:: Check all port-based services (faster)
 for %%p in (5173 5001 5003 5000 5004 5002 5005 5006 5007 5008) do (
-    netstat -an | findstr ":%%p" | findstr "LISTENING" >nul
+    netstat -ano | findstr ":%%p.*LISTENING" >nul 2>&1
     if !errorlevel! == 0 (
         echo ✅ Service on port %%p: RUNNING
     ) else (

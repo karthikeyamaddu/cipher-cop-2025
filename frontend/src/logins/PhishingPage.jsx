@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Mail, Link, Shield, Search, FileText, Activity, TrendingUp, Users, CheckCircle, ChevronDown, Settings, Eye, Brain, Clock, ExternalLink } from 'lucide-react';
 import ResultModal from '../components/ResultModal';
 import PhishingResultDetails from '../components/results/PhishingResultDetails';
+import { useTestPolling } from '../hooks/useTestPolling';
 
 
 const PhishingPage = () => {
@@ -111,12 +112,10 @@ const PhishingPage = () => {
     if (!url) return;
     setIsScanning(true);
     setScanResult(null);
-    setScanProgress({ step: 'Initializing WHOIS + Gemini Analysis...', progress: 20 });
+    setScanProgress({ step: 'Queueing analysis...', progress: 10 });
     
     try {
-      // WHOIS + Gemini Analysis Only
-      setScanProgress({ step: 'Running WHOIS + Gemini Analysis...', progress: 60 });
-      
+      // Queue the analysis (returns immediately with testId)
       const response = await fetch('http://localhost:5001/api/phishing/analyze', {
         method: 'POST',
         headers: {
@@ -128,62 +127,94 @@ const PhishingPage = () => {
 
       const data = await response.json();
       
-      setScanProgress({ step: 'Finalizing Results...', progress: 90 });
-      
-      if (data.success) {
-        // Fix threat level inconsistency by using AI risk score if available and high
-        let finalThreatLevel = data.data.threatLevel;
-        let finalIsPhishing = data.data.isPhishing;
-        
-        // Check if AI analysis provided a higher risk score
-        if (data.data.aiAnalysis && data.data.aiAnalysis.riskScore) {
-          const aiRiskScore = data.data.aiAnalysis.riskScore;
-          if (aiRiskScore >= 70) {
-            finalThreatLevel = 'high';
-            finalIsPhishing = true;
-          } else if (aiRiskScore >= 40) {
-            finalThreatLevel = 'medium';
-            finalIsPhishing = false;
-          } else {
-            finalThreatLevel = 'low';
-            finalIsPhishing = false;
-          }
-        }
-        
-        setScanResult({
-          type: 'url',
-          threat: finalThreatLevel,
-          isPhishing: finalIsPhishing,
-          riskScore: data.data.riskScore,
-          combinedRiskScore: data.data.combinedRiskScore,
-          flags: data.data.flags,
-          details: {
-            domain: data.data.domain,
-            reputation: data.data.details.reputation,
-            similarSites: data.data.details.similarDomains,
-            domainAge: data.data.details.domainAge,
-            registrar: data.data.details.registrar,
-            country: data.data.details.country,
-            expiryDate: data.data.details.expiryDate,
-            nameServers: data.data.details.nameServers,
-            status: data.data.details.status,
-            privacyProtection: data.data.details.privacyProtection,
-            lastChecked: data.data.details.lastChecked
-          },
-          aiAnalysis: {
-            enabled: data.data.aiAnalysis.enabled,
-            analysis: data.data.aiAnalysis.analysis,
-            riskScore: data.data.aiAnalysis.riskScore,
-            recommendations: data.data.aiAnalysis.recommendations,
-            insights: data.data.aiAnalysis.insights
-          }
-        });
-      } else {
-        throw new Error(data.error || 'Analysis failed');
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to queue analysis');
       }
+
+      const testId = data.data.testId;
+      const queuePosition = data.data.queuePosition;
       
-      setScanProgress({ step: 'Complete', progress: 100 });
-      fetchTestHistory(); // Refresh history after URL scan
+      setScanProgress({ 
+        step: `Queued (Position: ${queuePosition})`, 
+        progress: 20 
+      });
+
+      // Poll for results
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await fetch(
+            `http://localhost:5001/api/tests/${testId}/status`,
+            { credentials: 'include' }
+          );
+          
+          const statusData = await statusResponse.json();
+          
+          if (statusData.success) {
+            const status = statusData.data.processingStatus;
+            
+            if (status === 'processing') {
+              setScanProgress({ step: 'Analyzing URL...', progress: 60 });
+            } else if (status === 'completed') {
+              clearInterval(pollInterval);
+              setScanProgress({ step: 'Complete', progress: 100 });
+              
+              // Extract results from completed test
+              const test = statusData.data;
+              
+              setScanResult({
+                type: 'url',
+                threat: test.result.threatLevel,
+                isPhishing: test.result.isPhishing,
+                riskScore: test.result.riskScore,
+                combinedRiskScore: test.result.combinedRiskScore || test.result.riskScore,
+                flags: test.flags || [],
+                details: {
+                  domain: test.inputData.url,
+                  reputation: test.details?.reputation || 0,
+                  similarSites: test.details?.similarDomains || 0,
+                  domainAge: test.details?.domainAge || 'Unknown',
+                  registrar: test.details?.registrar || 'Unknown',
+                  country: test.details?.country || 'Unknown',
+                  expiryDate: test.details?.expiryDate || 'Unknown',
+                  nameServers: test.details?.nameServers || [],
+                  status: test.details?.status || 'Unknown',
+                  privacyProtection: test.details?.privacyProtection || false,
+                  lastChecked: test.details?.lastChecked || new Date().toLocaleString()
+                },
+                aiAnalysis: {
+                  enabled: !!test.details?.aiAnalysis,
+                  analysis: test.details?.aiAnalysis || null,
+                  riskScore: test.details?.aiAnalysis?.riskScore || 0,
+                  recommendations: test.recommendations || [],
+                  insights: test.insights || 'No AI insights available'
+                }
+              });
+              
+              fetchTestHistory(); // Refresh history
+              setIsScanning(false);
+            } else if (status === 'failed') {
+              clearInterval(pollInterval);
+              throw new Error(test.lastError || 'Analysis failed');
+            }
+          }
+        } catch (pollError) {
+          console.error('Polling error:', pollError);
+        }
+      }, 3000); // Poll every 3 seconds
+
+      // Timeout after 2 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (isScanning) {
+          setIsScanning(false);
+          setScanResult({
+            type: 'url',
+            threat: 'error',
+            error: 'Analysis timeout. Please try again.',
+            details: { domain: url, lastChecked: new Date().toLocaleString() }
+          });
+        }
+      }, 120000);
       
     } catch (error) {
       console.error('URL scan error:', error);
@@ -196,7 +227,6 @@ const PhishingPage = () => {
           lastChecked: new Date().toLocaleString()
         }
       });
-    } finally {
       setIsScanning(false);
     }
   };
