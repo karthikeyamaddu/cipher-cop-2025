@@ -31,7 +31,8 @@ echo.
 echo [*] Available Services:
 echo.
 echo     REDIS - Redis Server (Windows)
-echo     WORKER - Phishing Worker (Background Queue)
+echo     PHISHING_WORKER - Phishing Worker (Background Queue)
+echo     SCAM_WORKER - Scam Worker (Background Queue)
 echo     5173 - Frontend
 echo     5001 - Backend (Node.js)
 echo     5003 - Clone-AI (Gemini)
@@ -43,7 +44,7 @@ echo     5006 - Phone-Scam Detection
 echo     5007 - ML-Phishing Detection
 echo     5008 - Email-ML-Phishing Detection
 echo.
-set /p selected_ports="Enter services to start (space-separated, e.g., REDIS WORKER 5173 5001): "
+set /p selected_ports="Enter services to start (space-separated, e.g., REDIS PHISHING_WORKER SCAM_WORKER 5173 5001): "
 
 echo.
 echo [*] Starting selected services...
@@ -54,11 +55,18 @@ if !errorlevel! == 0 (
     echo ✅ Starting Redis Server (Windows)
 )
 
-echo " %selected_ports% " | findstr " WORKER " >nul
+echo " %selected_ports% " | findstr " PHISHING_WORKER " >nul
 if !errorlevel! == 0 (
     cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
     start "Phishing Worker" cmd /c "node src/workers/phishingWorker.js"
     echo ✅ Starting Phishing Worker (Background Queue)
+)
+
+echo " %selected_ports% " | findstr " SCAM_WORKER " >nul
+if !errorlevel! == 0 (
+    cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
+    start "Scam Worker" cmd /c "node src/workers/scamWorker.js"
+    echo ✅ Starting Scam Worker (Background Queue)
 )
 
 echo " %selected_ports% " | findstr " 5173 " >nul
@@ -153,6 +161,10 @@ start "Redis Server" cmd /c "C:\Redis\redis-server.exe"
 :: ---- PHISHING WORKER (Background Queue) ----
 cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
 start "Phishing Worker" cmd /c "node src/workers/phishingWorker.js"
+
+:: ---- SCAM WORKER (Background Queue) ----
+cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
+start "Scam Worker" cmd /c "node src/workers/scamWorker.js"
 
 :: ---- FRONTEND (5173) ----
 cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\frontend"

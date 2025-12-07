@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { DollarSign, AlertTriangle, Search, Phone, TrendingUp, Users, Shield, CheckCircle, Database, CreditCard, Loader, Zap, Brain, Eye, Lock, Cpu, Clock, FileText } from 'lucide-react';
 import ResultModal from '../components/ResultModal';
 import ScamResultDetails from '../components/results/ScamResultDetails';
+import { useNotification } from '../context/NotificationContext';
 
 const ScamPage = () => {
+  const { startPolling } = useNotification();
+  
+  // Form state
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [scanResult, setScanResult] = useState(null);
-  const [isScanning, setIsScanning] = useState(false);
   const [selectedServices, setSelectedServices] = useState({
     ipqs: true,
     twilio: true,
@@ -15,22 +17,53 @@ const ScamPage = () => {
     numverify: true,
     scam_databases: true
   });
-
-  // Phone Number Scam Detection API endpoint
-  const API_BASE_URL = 'http://localhost:5006';
   
-  // Test history
+  // Scan state
+  const [scanResult, setScanResult] = useState(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState({ step: '', progress: 0 });
+  
+  // Test history state
   const [testHistory, setTestHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   
-  // Result modal
+  // Modal state
   const [selectedTest, setSelectedTest] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // API endpoint
+  const API_BASE_URL = 'http://localhost:5006';
+  
+  const [hasCheckedSessionStorage, setHasCheckedSessionStorage] = useState(false);
 
   // Fetch test history on component mount
   useEffect(() => {
     fetchTestHistory();
   }, []);
+
+  // Check if we need to open modal from notification (after history is loaded, only once)
+  useEffect(() => {
+    if (hasCheckedSessionStorage) return; // Already checked
+    
+    const testIdToOpen = sessionStorage.getItem('openModalForTest');
+    if (testIdToOpen && testHistory.length > 0) {
+      console.log('📂 Opening modal for test:', testIdToOpen);
+      sessionStorage.removeItem('openModalForTest');
+      setHasCheckedSessionStorage(true);
+      
+      const test = testHistory.find(t => t._id === testIdToOpen);
+      if (test) {
+        console.log('✅ Test found, opening modal');
+        setSelectedTest(test);
+        setIsModalOpen(true);
+      } else {
+        console.log('❌ Test not found in history');
+      }
+    } else if (testHistory.length > 0) {
+      // Mark as checked even if no testId to open
+      setHasCheckedSessionStorage(true);
+    }
+  }, [testHistory, hasCheckedSessionStorage]);
 
   const fetchTestHistory = async () => {
     setIsLoadingHistory(true);
@@ -107,8 +140,11 @@ const ScamPage = () => {
     if (!phoneNumber) return;
     setIsScanning(true);
     setScanResult(null);
+    setScanProgress({ step: 'Checking phone number...', progress: 10 });
     
     try {
+      // Call Python service for analysis
+      setScanProgress({ step: 'Analyzing with multiple providers...', progress: 30 });
       const response = await fetch(`${API_BASE_URL}/lookup`, {
         method: 'POST',
         headers: {
@@ -130,27 +166,94 @@ const ScamPage = () => {
         throw new Error(data.error);
       }
 
-      // Process the real API response
-      setScanResult({
-        type: 'phone',
-        target: data.e164 || phoneNumber,
-        isScam: data.score >= 50, // Consider 50+ as scam risk
-        riskLevel: data.score >= 80 ? 'high' : data.score >= 50 ? 'medium' : 'low',
-        score: data.score,
-        verdict: data.verdict,
-        reasons: data.reasons || [],
-        enhanced_analysis: data.enhanced_analysis,
-        ai_analysis: data.ai_analysis,
-        details: {
-          reports: data.debug_info?.reports_count || 0,
-          providers_used: Object.keys(data.signals || {}),
-          api_status: data.debug_info?.api_keys_status || {},
-          raw_signals: data.signals || {}
-        }
+      // Queue the analysis
+      setScanProgress({ step: 'Queueing analysis...', progress: 60 });
+      const queueResponse = await fetch('http://localhost:5001/api/scam/store', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          phoneNumber: phoneNumber,
+          score: data.score,
+          verdict: data.verdict,
+          providers: Object.keys(data.signals || {}),
+          enhancedAnalysis: data.enhanced_analysis,
+          aiAnalysis: data.ai_analysis,
+          reportsCount: data.debug_info?.reports_count || 0
+        })
       });
+
+      const queueData = await queueResponse.json();
       
-      // Save to database
-      await saveScamToDatabase(data);
+      if (!queueData.success) {
+        throw new Error(queueData.error || 'Failed to queue analysis');
+      }
+
+      const testId = queueData.data.testId;
+      const queuePosition = queueData.data.queuePosition;
+      
+      setScanProgress({ 
+        step: `Queued (Position: ${queuePosition})`, 
+        progress: 70 
+      });
+
+      // Start background polling with notification
+      startPolling(testId, 'scam-phone', '/Home?section=scam');
+
+      // Poll for results on current page
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await fetch(
+            `http://localhost:5001/api/tests/${testId}/status`,
+            { credentials: 'include' }
+          );
+          
+          const statusData = await statusResponse.json();
+          
+          if (statusData.success) {
+            const status = statusData.data.processingStatus;
+            
+            if (status === 'processing') {
+              setScanProgress({ step: 'Processing...', progress: 85 });
+            } else if (status === 'completed') {
+              clearInterval(pollInterval);
+              setScanProgress({ step: 'Complete', progress: 100 });
+              
+              // Extract results
+              const test = statusData.data;
+              
+              setScanResult({
+                type: 'phone',
+                target: test.inputData.phoneNumber,
+                isScam: test.result.isScam,
+                riskLevel: test.result.threatLevel,
+                score: test.result.riskScore,
+                verdict: test.result.verdict,
+                reasons: test.flags || [],
+                enhanced_analysis: test.details.enhancedAnalysis,
+                ai_analysis: test.details.aiAnalysis,
+                details: {
+                  reports: test.details.reportsCount || 0,
+                  providers_used: test.details.providers || [],
+                  fraudScore: test.details.fraudScore,
+                  lineType: test.details.lineType,
+                  carrier: test.details.carrier
+                }
+              });
+              
+              fetchTestHistory();
+              setIsScanning(false);
+            } else if (status === 'failed') {
+              clearInterval(pollInterval);
+              throw new Error(test.lastError || 'Analysis failed');
+            }
+          }
+        } catch (pollError) {
+          console.error('Polling error:', pollError);
+        }
+      }, 3000);
 
     } catch (error) {
       console.error('Phone check error:', error);
@@ -162,12 +265,9 @@ const ScamPage = () => {
         error: error.message,
         details: {
           reports: 0,
-          providers_used: [],
-          api_status: {},
-          raw_signals: {}
+          providers_used: []
         }
       });
-    } finally {
       setIsScanning(false);
     }
   };

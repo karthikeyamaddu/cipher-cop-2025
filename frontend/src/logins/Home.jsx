@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, AlertTriangle, Bug, Copy, DollarSign, Menu, X, Lock, Eye, Users, Zap, TrendingUp, Globe, CheckCircle, LogOut, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import PhishingPage from './PhishingPage';
 import MalwarePage from './MalwarePage';
 import ClonePage from './ClonePage';
@@ -16,24 +16,38 @@ const Home = () => {
   const [animationKey, setAnimationKey] = useState(0);
   const { user, logout, isAuthenticated, checkAuthStatus } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Check authentication when component mounts
   useEffect(() => {
     checkAuthStatus();
   }, []);
 
-  // Handle feature activation after login
+  // Handle feature activation after login OR from notification
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const activateFeature = urlParams.get('feature') ||
+    const urlParams = new URLSearchParams(location.search);
+    const sectionParam = urlParams.get('section'); // From notification
+    const activateFeature = urlParams.get('feature') || // From login redirect
       (window.history.state && window.history.state.activateFeature);
 
-    if (activateFeature && isAuthenticated) {
-      setActiveSection(activateFeature);
-      // Clean up the URL
-      window.history.replaceState(null, '', '/Home');
+    const targetSection = sectionParam || activateFeature;
+    
+    if (targetSection) {
+      console.log('🔄 URL has section param:', targetSection);
+      console.log('🔐 Is authenticated:', isAuthenticated);
+      
+      if (isAuthenticated) {
+        console.log('✅ Switching to section:', targetSection);
+        setActiveSection(targetSection);
+        // Clean up the URL after a short delay to ensure section switches
+        setTimeout(() => {
+          window.history.replaceState(null, '', '/Home');
+        }, 100);
+      } else {
+        console.log('⏳ Waiting for authentication...');
+      }
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, location.search]);
 
   const handleFeatureAccess = (featureId) => {
     if (!isAuthenticated) {

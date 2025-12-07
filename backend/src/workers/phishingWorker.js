@@ -30,12 +30,12 @@ phishingQueue.on('active', (job) => {
   console.log(`🔄 [Phishing Worker] Job ${job.id} is now active`);
 });
 
-// Process phishing analysis jobs
+// Process phishing analysis jobs (URL and Email)
 phishingQueue.process(async (job) => {
-  const { testId, url, userId } = job.data;
+  const { testId, type, userId } = job.data;
   const startTime = Date.now();
   
-  console.log(`🔍 [Phishing Worker] Processing job ${job.id} for test ${testId}`);
+  console.log(`🔍 [Phishing Worker] Processing ${type || 'url'} job ${job.id} for test ${testId}`);
   
   try {
     // Update status to 'processing'
@@ -52,49 +52,99 @@ phishingQueue.process(async (job) => {
       }
     });
     
-    console.log(`⚙️ [Phishing Worker] Analyzing URL: ${url}`);
+    let updateData;
     
-    // Perform phishing analysis
-    const analysis = await phishingDetector.analyzeUrl(url);
-    const processingTime = Date.now() - startTime;
-    
-    console.log(`✅ [Phishing Worker] Analysis complete. Risk: ${analysis.riskScore}`);
-    
-    // Update test result with completed analysis
-    await TestResult.findByIdAndUpdate(testId, {
-      processingStatus: 'completed',
-      completedAt: new Date(),
-      result: {
-        isPhishing: analysis.isPhishing,
-        threatLevel: analysis.threatLevel || 'low',
-        riskScore: analysis.riskScore,
-        combinedRiskScore: analysis.combinedRiskScore || analysis.riskScore,
-        confidence: analysis.confidence || 0.9
-      },
-      details: {
-        domainAge: analysis.details.domainAge || 'Unknown',
-        registrar: analysis.details.registrar || 'Unknown',
-        country: analysis.details.country || 'Unknown',
-        reputation: analysis.details.reputation,
-        similarDomains: analysis.details.similarDomains,
-        expiryDate: analysis.details.expiryDate,
-        nameServers: analysis.details.nameServers,
-        status: analysis.details.status,
-        privacyProtection: analysis.details.privacyProtection,
-        lastChecked: analysis.details.lastChecked,
-        aiAnalysis: analysis.aiAnalysis,
-        whoisData: analysis.whoisData,
+    // Handle URL analysis
+    if (!type || type === 'url') {
+      const { url } = job.data;
+      console.log(`⚙️ [Phishing Worker] Analyzing URL: ${url}`);
+      
+      const analysis = await phishingDetector.analyzeUrl(url);
+      const processingTime = Date.now() - startTime;
+      
+      console.log(`✅ [Phishing Worker] URL analysis complete. Risk: ${analysis.riskScore}`);
+      
+      updateData = {
+        processingStatus: 'completed',
+        completedAt: new Date(),
+        result: {
+          isPhishing: analysis.isPhishing,
+          threatLevel: analysis.threatLevel || 'low',
+          riskScore: analysis.riskScore,
+          combinedRiskScore: analysis.combinedRiskScore || analysis.riskScore,
+          confidence: analysis.confidence || 0.9
+        },
+        details: {
+          domainAge: analysis.details.domainAge || 'Unknown',
+          registrar: analysis.details.registrar || 'Unknown',
+          country: analysis.details.country || 'Unknown',
+          reputation: analysis.details.reputation,
+          similarDomains: analysis.details.similarDomains,
+          expiryDate: analysis.details.expiryDate,
+          nameServers: analysis.details.nameServers,
+          status: analysis.details.status,
+          privacyProtection: analysis.details.privacyProtection,
+          lastChecked: analysis.details.lastChecked,
+          aiAnalysis: analysis.aiAnalysis,
+          whoisData: analysis.whoisData,
+          processingTime
+        },
+        flags: analysis.flags,
+        recommendations: analysis.aiRecommendations || [],
+        insights: analysis.aiInsights || 'No AI insights available',
         processingTime
-      },
-      flags: analysis.flags,
-      recommendations: analysis.aiRecommendations || [],
-      insights: analysis.aiInsights || 'No AI insights available',
-      processingTime,
+      };
+    }
+    // Handle Email analysis
+    else if (type === 'email') {
+      const { emailData, mlResult } = job.data;
+      console.log(`⚙️ [Phishing Worker] Analyzing Email: ${emailData.subject}`);
+      
+      const processingTime = Date.now() - startTime;
+      
+      console.log(`✅ [Phishing Worker] Email analysis complete. Risk: ${Math.round(mlResult.probability * 100)}`);
+      
+      updateData = {
+        processingStatus: 'completed',
+        completedAt: new Date(),
+        result: {
+          isPhishing: mlResult.prediction === 'phishing',
+          threatLevel: mlResult.prediction === 'phishing' ? 'high' : 
+                      mlResult.probability > 0.3 ? 'medium' : 'low',
+          riskScore: Math.round(mlResult.probability * 100),
+          confidence: mlResult.confidence,
+          verdict: mlResult.prediction
+        },
+        details: {
+          mlPrediction: mlResult,
+          suspiciousKeywords: mlResult.features_used?.urgent_keywords || 0,
+          linkCount: mlResult.features_used?.links_count || 0,
+          linkDensity: mlResult.features_used?.link_density || 0,
+          htmlTags: mlResult.features_used?.html_tags || 0,
+          specialChars: mlResult.features_used?.special_chars || 0,
+          processingTime,
+          lastChecked: new Date().toLocaleString()
+        },
+        flags: mlResult.prediction === 'phishing' ? 
+            ['ML Detection: Phishing content detected'] : 
+            mlResult.probability > 0.3 ? ['ML Detection: Suspicious patterns found'] : 
+            ['ML Detection: Content appears legitimate'],
+        recommendations: mlResult.prediction === 'phishing' ? 
+            ['Do not click any links', 'Do not reply to this email', 'Report as spam'] : 
+            ['Email appears safe but remain cautious'],
+        insights: `ML Analysis: ${mlResult.prediction} with ${Math.round(mlResult.confidence * 100)}% confidence`,
+        processingTime
+      };
+    }
+    
+    // Update test result
+    await TestResult.findByIdAndUpdate(testId, {
+      ...updateData,
       $push: {
         auditTrail: {
           status: 'completed',
           timestamp: new Date(),
-          message: `Analysis completed successfully in ${processingTime}ms`
+          message: `Analysis completed successfully in ${updateData.processingTime}ms`
         }
       }
     });
@@ -104,8 +154,8 @@ phishingQueue.process(async (job) => {
     return {
       success: true,
       testId,
-      riskScore: analysis.riskScore,
-      processingTime
+      riskScore: updateData.result.riskScore,
+      processingTime: updateData.processingTime
     };
     
   } catch (error) {

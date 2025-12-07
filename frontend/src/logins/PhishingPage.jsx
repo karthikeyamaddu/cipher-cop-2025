@@ -3,9 +3,11 @@ import { AlertTriangle, Mail, Link, Shield, Search, FileText, Activity, Trending
 import ResultModal from '../components/ResultModal';
 import PhishingResultDetails from '../components/results/PhishingResultDetails';
 import { useTestPolling } from '../hooks/useTestPolling';
+import { useNotification } from '../context/NotificationContext';
 
 
 const PhishingPage = () => {
+  const { startPolling } = useNotification();
   const [url, setUrl] = useState('');
   const [emailContent, setEmailContent] = useState('');
   const [scanResult, setScanResult] = useState(null);
@@ -28,7 +30,9 @@ const PhishingPage = () => {
   
   // Result modal
   const [selectedTest, setSelectedTest] = useState(null);
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [hasCheckedSessionStorage, setHasCheckedSessionStorage] = useState(false);
   
   const openResultModal = (test) => {
     setSelectedTest(test);
@@ -47,6 +51,30 @@ const PhishingPage = () => {
   useEffect(() => {
     fetchTestHistory();
   }, []);
+
+  // Check if we need to open modal from notification (after history is loaded, only once)
+  useEffect(() => {
+    if (hasCheckedSessionStorage) return; // Already checked
+    
+    const testIdToOpen = sessionStorage.getItem('openModalForTest');
+    if (testIdToOpen && testHistory.length > 0) {
+      console.log('📂 Opening modal for test:', testIdToOpen);
+      sessionStorage.removeItem('openModalForTest');
+      setHasCheckedSessionStorage(true);
+      
+      const test = testHistory.find(t => t._id === testIdToOpen);
+      if (test) {
+        console.log('✅ Test found, opening modal');
+        setSelectedTest(test);
+        setIsModalOpen(true);
+      } else {
+        console.log('❌ Test not found in history');
+      }
+    } else if (testHistory.length > 0) {
+      // Mark as checked even if no testId to open
+      setHasCheckedSessionStorage(true);
+    }
+  }, [testHistory, hasCheckedSessionStorage]);
 
   const fetchTestHistory = async () => {
     setIsLoadingHistory(true);
@@ -139,7 +167,10 @@ const PhishingPage = () => {
         progress: 20 
       });
 
-      // Poll for results
+      // Start background polling with notification
+      startPolling(testId, 'phishing-url', '/Home?section=phishing');
+
+      // Poll for results on current page
       const pollInterval = setInterval(async () => {
         try {
           const statusResponse = await fetch(
@@ -235,6 +266,7 @@ const PhishingPage = () => {
     if (!emailContent) return;
     setIsScanning(true);
     setScanResult(null);
+    setScanProgress({ step: 'Analyzing email...', progress: 10 });
     
     try {
       // Prepare the request data with all available fields
@@ -249,7 +281,8 @@ const PhishingPage = () => {
       };
 
       // Call the ML-based phishing email detection service
-      const response = await fetch('http://localhost:5008/predict', {
+      setScanProgress({ step: 'Running ML analysis...', progress: 30 });
+      const mlResponse = await fetch('http://localhost:5008/predict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -257,71 +290,126 @@ const PhishingPage = () => {
         body: JSON.stringify(requestData)
       });
 
-      const data = await response.json();
+      const mlData = await mlResponse.json();
       
-      if (data.prediction) {
-        const isPhishing = data.prediction === 'phishing';
-        const riskScore = Math.round(data.probability * 100);
-        
-        // Use the same logic as index.html for classification
-        let threatLevel = 'low';
-        if (isPhishing) {
-          threatLevel = 'high';
-        } else if (data.probability > 0.3) {
-          threatLevel = 'medium'; // Suspicious content
-        }
-        
-        setScanResult({
-          type: 'email',
-          threat: threatLevel,
-          isPhishing: isPhishing,
-          riskScore: riskScore,
-          confidence: Math.round(data.confidence * 100),
-          prediction: data.prediction,
-          probability: data.probability,
-          flags: isPhishing ? 
-            ['ML Detection: Phishing content detected', `Confidence: ${Math.round(data.confidence * 100)}%`] : 
-            data.probability > 0.3 ? 
-              ['ML Detection: Suspicious patterns found', `Confidence: ${Math.round(data.confidence * 100)}%`] :
-              ['ML Detection: Content appears legitimate', `Confidence: ${Math.round(data.confidence * 100)}%`],
-          mlAnalysis: {
-            enabled: true,
-            prediction: data.prediction,
-            probability: data.probability,
-            confidence: data.confidence,
-            features: data.features_used
-          },
-          details: {
-            suspiciousLinks: data.features_used?.links_count || 0,
-            suspiciousKeywords: data.features_used?.urgent_keywords || 0,
-            phishingIndicators: isPhishing ? 1 : 0,
-            contentLength: data.features_used?.email_length || emailContent.length,
-            senderReputation: data.features_used?.domain_length ? Math.max(10, 100 - (data.features_used.domain_length * 2)) : 75,
-            contentAnalysis: `ML Analysis: ${data.prediction} (${Math.round(data.confidence * 100)}% confidence)`,
-            lastChecked: new Date().toLocaleString(),
-            domainAge: data.features_used?.domain_age || 'Unknown',
-            htmlTags: data.features_used?.html_tags || 0,
-            specialChars: data.features_used?.special_chars || 0,
-            linkDensity: data.features_used?.link_density || 0
-          }
-        });
-        
-        // Save to database
-        await saveEmailToDatabase(data);
-      } else {
-        throw new Error(data.error || 'ML analysis failed');
+      if (!mlData.prediction) {
+        throw new Error(mlData.error || 'ML analysis failed');
       }
+      
+      // Queue the analysis
+      setScanProgress({ step: 'Queueing analysis...', progress: 60 });
+      const queueResponse = await fetch('http://localhost:5001/api/phishing/analyze-email-store', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          emailData: {
+            subject: emailSubject || '',
+            senderEmail: senderEmail || '',
+            senderDomain: senderDomain || '',
+            replyTo: replyTo || '',
+            hasAttachment: hasAttachment || false,
+            urgentKeywords: urgentKeywords || false,
+            content: emailContent
+          },
+          mlResult: mlData
+        })
+      });
+
+      const queueData = await queueResponse.json();
+      
+      if (!queueData.success) {
+        throw new Error(queueData.error || 'Failed to queue analysis');
+      }
+
+      const testId = queueData.data.testId;
+      const queuePosition = queueData.data.queuePosition;
+      
+      setScanProgress({ 
+        step: `Queued (Position: ${queuePosition})`, 
+        progress: 70 
+      });
+
+      // Start background polling with notification
+      startPolling(testId, 'phishing-email', '/Home?section=phishing');
+
+      // Poll for results on current page
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await fetch(
+            `http://localhost:5001/api/tests/${testId}/status`,
+            { credentials: 'include' }
+          );
+          
+          const statusData = await statusResponse.json();
+          
+          if (statusData.success) {
+            const status = statusData.data.processingStatus;
+            
+            if (status === 'processing') {
+              setScanProgress({ step: 'Analyzing email...', progress: 85 });
+            } else if (status === 'completed') {
+              clearInterval(pollInterval);
+              setScanProgress({ step: 'Complete', progress: 100 });
+              
+              // Extract results
+              const test = statusData.data;
+              const isPhishing = test.result.isPhishing;
+              const riskScore = test.result.riskScore;
+              
+              setScanResult({
+                type: 'email',
+                threat: test.result.threatLevel,
+                isPhishing: isPhishing,
+                riskScore: riskScore,
+                confidence: Math.round(test.result.confidence * 100),
+                prediction: test.result.verdict,
+                probability: riskScore / 100,
+                flags: test.flags || [],
+                mlAnalysis: {
+                  enabled: true,
+                  prediction: test.result.verdict,
+                  probability: riskScore / 100,
+                  confidence: test.result.confidence,
+                  features: test.details?.mlPrediction?.features_used || {}
+                },
+                details: {
+                  suspiciousLinks: test.details?.linkCount || 0,
+                  suspiciousKeywords: test.details?.suspiciousKeywords || 0,
+                  phishingIndicators: isPhishing ? 1 : 0,
+                  contentLength: emailContent.length,
+                  contentAnalysis: test.insights || '',
+                  lastChecked: test.details?.lastChecked || new Date().toLocaleString(),
+                  htmlTags: test.details?.htmlTags || 0,
+                  specialChars: test.details?.specialChars || 0,
+                  linkDensity: test.details?.linkDensity || 0
+                }
+              });
+              
+              fetchTestHistory();
+              setIsScanning(false);
+            } else if (status === 'failed') {
+              clearInterval(pollInterval);
+              throw new Error(test.lastError || 'Analysis failed');
+            }
+          }
+        } catch (pollError) {
+          console.error('Polling error:', pollError);
+        }
+      }, 3000);
+      
     } catch (error) {
-      console.error('Email ML scan error:', error);
+      console.error('Email scan error:', error);
       setScanResult({
         type: 'email',
         threat: 'error',
-        error: `ML Service Error: ${error.message}`,
+        error: `Error: ${error.message}`,
         details: {
           lastChecked: new Date().toLocaleString()
         }
       });
-    } finally {
       setIsScanning(false);
     }
   };

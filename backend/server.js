@@ -179,24 +179,34 @@ app.post('/api/phishing/analyze', protectRoute, async (req, res) => {
     }
 });
 
-// ==================== EMAIL PHISHING STORAGE ====================
+// ==================== EMAIL PHISHING STORAGE (QUEUED) ====================
 app.post('/api/phishing/analyze-email-store', protectRoute, async (req, res) => {
-    const startTime = Date.now();
     try {
         const { emailData, mlResult } = req.body;
         
         if (!emailData || !mlResult) {
             return res.status(400).json({ 
-                error: 'Email data and ML result are required',
-                success: false 
+                success: false,
+                error: 'Email data and ML result are required'
             });
         }
 
-        console.log(`✅ Storing email phishing test for user: ${req.user._id}`);
-        console.log('📧 Email data received:', emailData);
-        console.log('📧 Email content:', emailData.content);
-        console.log('📧 Email content length:', emailData.content?.length || 0);
+        // Check concurrent limit (max 3 jobs per user)
+        const activeCount = await TestResult.countDocuments({
+            userId: req.user._id,
+            processingStatus: { $in: ['queued', 'processing'] }
+        });
         
+        if (activeCount >= 3) {
+            return res.status(429).json({
+                success: false,
+                error: 'Maximum 3 concurrent analyses allowed. Please wait for current analyses to complete.'
+            });
+        }
+
+        console.log(`✅ Queueing email phishing test for user: ${req.user._id}`);
+        
+        // Create test with status='queued'
         const testResult = new TestResult({
             userId: req.user._id,
             testType: 'phishing-email',
@@ -209,33 +219,14 @@ app.post('/api/phishing/analyze-email-store', protectRoute, async (req, res) => 
                 urgentKeywords: emailData.urgentKeywords || false,
                 content: emailData.content || '' // Store email content for display
             },
-            result: {
-                isPhishing: mlResult.prediction === 'phishing',
-                threatLevel: mlResult.prediction === 'phishing' ? 'high' : 
-                            mlResult.probability > 0.3 ? 'medium' : 'low',
-                riskScore: Math.round(mlResult.probability * 100),
-                confidence: mlResult.confidence,
-                verdict: mlResult.prediction
-            },
-            details: {
-                mlPrediction: mlResult,
-                suspiciousKeywords: mlResult.features_used?.urgent_keywords || 0,
-                linkCount: mlResult.features_used?.links_count || 0,
-                linkDensity: mlResult.features_used?.link_density || 0,
-                htmlTags: mlResult.features_used?.html_tags || 0,
-                specialChars: mlResult.features_used?.special_chars || 0,
-                processingTime: Date.now() - startTime,
-                lastChecked: new Date().toLocaleString()
-            },
-            flags: mlResult.prediction === 'phishing' ? 
-                ['ML Detection: Phishing content detected'] : 
-                mlResult.probability > 0.3 ? ['ML Detection: Suspicious patterns found'] : 
-                ['ML Detection: Content appears legitimate'],
-            recommendations: mlResult.prediction === 'phishing' ? 
-                ['Do not click any links', 'Do not reply to this email', 'Report as spam'] : 
-                ['Email appears safe but remain cautious'],
-            insights: `ML Analysis: ${mlResult.prediction} with ${Math.round(mlResult.confidence * 100)}% confidence`,
-            processingTime: Date.now() - startTime,
+            processingStatus: 'queued',
+            queuePosition: await getQueuePosition('phishing-analysis'),
+            queuedAt: new Date(),
+            auditTrail: [{
+                status: 'queued',
+                timestamp: new Date(),
+                message: 'Email phishing analysis queued'
+            }],
             ipAddress: req.ip,
             userAgent: req.get('user-agent')
         });
@@ -248,23 +239,31 @@ app.post('/api/phishing/analyze-email-store', protectRoute, async (req, res) => 
             $inc: { testCount: 1 }
         });
         
-        console.log(`✅ Test ${testResult._id} added to user ${req.user._id}`);
-        console.log('📧 Final saved inputData:', testResult.inputData);
-        console.log('📧 Final saved content:', testResult.inputData.content);
+        // Add job to queue
+        await addJobToQueue('phishing-analysis', {
+            testId: testResult._id,
+            emailData,
+            mlResult,
+            userId: req.user._id,
+            type: 'email' // Distinguish from URL analysis
+        });
+        
+        console.log(`✅ Email test ${testResult._id} queued for user ${req.user._id}`);
         
         res.status(200).json({
             success: true,
+            message: 'Email analysis queued successfully',
             data: {
                 testId: testResult._id,
-                message: 'Email phishing test stored successfully'
+                queuePosition: testResult.queuePosition
             }
         });
         
     } catch (error) {
-        console.error('❌ Email phishing storage error:', error);
+        console.error('❌ Email phishing queue error:', error);
         res.status(500).json({ 
-            error: 'Failed to store email test: ' + error.message,
-            success: false 
+            success: false,
+            error: 'Failed to queue email analysis'
         });
     }
 });
@@ -814,56 +813,53 @@ app.get('/api/images/thumbnail/:fileId', protectRoute, async (req, res) => {
     }
 });
 
-// ==================== SCAM PHONE DETECTION STORAGE ====================
+// ==================== SCAM PHONE DETECTION STORAGE (QUEUED) ====================
 app.post('/api/scam/store', protectRoute, async (req, res) => {
-    const startTime = Date.now();
     try {
         const { phoneNumber, score, verdict, providers, enhancedAnalysis, aiAnalysis, reportsCount } = req.body;
         
         if (!phoneNumber || score === undefined) {
             return res.status(400).json({ 
-                error: 'Phone number and score are required',
-                success: false 
+                success: false,
+                error: 'Phone number and score are required'
             });
         }
 
-        console.log(`✅ Storing scam detection test for user: ${req.user._id}`);
+        // Check concurrent limit (max 3 jobs per user)
+        const activeCount = await TestResult.countDocuments({
+            userId: req.user._id,
+            processingStatus: { $in: ['queued', 'processing'] }
+        });
         
-        // Hash phone number for privacy (but also store original for display)
+        if (activeCount >= 3) {
+            return res.status(429).json({
+                success: false,
+                error: 'Maximum 3 concurrent analyses allowed. Please wait for current analyses to complete.'
+            });
+        }
+
+        console.log(`✅ Queueing scam detection test for user: ${req.user._id}`);
+        
+        // Hash phone number for privacy
         const crypto = await import('crypto');
         const phoneHash = crypto.createHash('sha256').update(phoneNumber).digest('hex');
         
+        // Create test with status='queued'
         const testResult = new TestResult({
             userId: req.user._id,
             testType: 'scam-phone',
             inputData: {
-                phoneNumber: phoneNumber, // Store for display in modal
-                phoneNumberHash: phoneHash // Store hash for privacy/security
+                phoneNumber: phoneNumber,
+                phoneNumberHash: phoneHash
             },
-            result: {
-                isScam: score >= 50,
-                threatLevel: score >= 80 ? 'high' : score >= 50 ? 'medium' : 'low',
-                riskScore: score,
-                confidence: enhancedAnalysis?.confidence || 0.7,
-                verdict: verdict || 'unknown'
-            },
-            details: {
-                providers: providers || [],
-                enhancedAnalysis: enhancedAnalysis || null,
-                aiAnalysis: aiAnalysis || null,
-                reportsCount: reportsCount || 0,
-                fraudScore: score,
-                lineType: enhancedAnalysis?.line_type || 'unknown',
-                carrier: enhancedAnalysis?.carrier || 'unknown',
-                processingTime: Date.now() - startTime,
-                lastChecked: new Date().toLocaleString()
-            },
-            flags: score >= 50 ? ['High scam risk detected', 'Multiple fraud indicators'] : ['Number appears legitimate'],
-            recommendations: score >= 50 ? 
-                ['Do not answer calls from this number', 'Block this number', 'Report as scam'] : 
-                ['Number appears safe but remain cautious'],
-            insights: aiAnalysis?.explanation || `Scam risk score: ${score}/100`,
-            processingTime: Date.now() - startTime,
+            processingStatus: 'queued',
+            queuePosition: await getQueuePosition('scam-detection'),
+            queuedAt: new Date(),
+            auditTrail: [{
+                status: 'queued',
+                timestamp: new Date(),
+                message: 'Scam detection analysis queued'
+            }],
             ipAddress: req.ip,
             userAgent: req.get('user-agent')
         });
@@ -876,21 +872,36 @@ app.post('/api/scam/store', protectRoute, async (req, res) => {
             $inc: { testCount: 1 }
         });
         
-        console.log(`✅ Test ${testResult._id} added to user ${req.user._id}`);
+        // Add job to queue
+        await addJobToQueue('scam-detection', {
+            testId: testResult._id,
+            phoneNumber,
+            phoneNumberHash: phoneHash,
+            score,
+            verdict,
+            providers,
+            enhancedAnalysis,
+            aiAnalysis,
+            reportsCount,
+            userId: req.user._id
+        });
+        
+        console.log(`✅ Scam test ${testResult._id} queued for user ${req.user._id}`);
         
         res.status(200).json({
             success: true,
+            message: 'Scam detection queued successfully',
             data: {
                 testId: testResult._id,
-                message: 'Scam detection test stored successfully'
+                queuePosition: testResult.queuePosition
             }
         });
         
     } catch (error) {
-        console.error('❌ Scam detection storage error:', error);
+        console.error('❌ Scam detection queue error:', error);
         res.status(500).json({ 
-            error: 'Failed to store scam test: ' + error.message,
-            success: false 
+            success: false,
+            error: 'Failed to queue scam detection'
         });
     }
 });

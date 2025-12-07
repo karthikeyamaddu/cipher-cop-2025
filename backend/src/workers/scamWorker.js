@@ -14,7 +14,7 @@ mongoose.connect(MONGODB_URI)
 
 // Process scam detection jobs
 scamQueue.process(async (job) => {
-  const { testId, scamData } = job.data;
+  const { testId, phoneNumber, phoneNumberHash, score, verdict, providers, enhancedAnalysis, aiAnalysis, reportsCount, userId } = job.data;
   const startTime = Date.now();
   
   console.log(`🔍 [Scam Worker] Processing job ${job.id} for test ${testId}`);
@@ -34,18 +34,15 @@ scamQueue.process(async (job) => {
       }
     });
     
-    console.log(`⚙️ [Scam Worker] Analyzing phone scam data`);
+    console.log(`⚙️ [Scam Worker] Analyzing phone number: ${phoneNumber}`);
     
-    // Extract scam data
-    const { phoneNumber, phoneNumberHash, providers, enhancedAnalysis, reportsCount, fraudScore, lineType, carrier } = scamData;
-    
-    // Determine if scam
-    const isScam = fraudScore >= 70 || reportsCount > 5;
-    const threatLevel = fraudScore >= 70 ? 'high' : fraudScore >= 40 ? 'medium' : 'low';
+    // Determine if scam based on score
+    const isScam = score >= 50;
+    const threatLevel = score >= 80 ? 'high' : score >= 50 ? 'medium' : 'low';
     
     const processingTime = Date.now() - startTime;
     
-    console.log(`✅ [Scam Worker] Analysis complete. Scam: ${isScam}, Fraud Score: ${fraudScore}`);
+    console.log(`✅ [Scam Worker] Analysis complete. Scam: ${isScam}, Score: ${score}`);
     
     // Update test result
     await TestResult.findByIdAndUpdate(testId, {
@@ -54,24 +51,26 @@ scamQueue.process(async (job) => {
       result: {
         isScam,
         threatLevel,
-        riskScore: fraudScore,
-        verdict: isScam ? 'scam' : 'safe'
+        riskScore: score,
+        confidence: enhancedAnalysis?.confidence || 0.7,
+        verdict: verdict || 'unknown'
       },
       details: {
         providers: providers || [],
-        enhancedAnalysis: enhancedAnalysis || {},
+        enhancedAnalysis: enhancedAnalysis || null,
+        aiAnalysis: aiAnalysis || null,
         reportsCount: reportsCount || 0,
-        fraudScore: fraudScore || 0,
-        lineType: lineType || 'unknown',
-        carrier: carrier || 'unknown',
+        fraudScore: score,
+        lineType: enhancedAnalysis?.line_type || 'unknown',
+        carrier: enhancedAnalysis?.carrier || 'unknown',
         processingTime,
         lastChecked: new Date().toLocaleString()
       },
-      flags: isScam ? ['Scam number detected', 'Multiple reports'] : ['Number appears safe'],
-      recommendations: isScam ? 
-        ['Do not answer calls from this number', 'Block this number', 'Report as spam'] : 
-        ['Number appears legitimate'],
-      insights: `Phone Scam Analysis: ${isScam ? 'Scam detected' : 'Safe number'}`,
+      flags: score >= 50 ? ['High scam risk detected', 'Multiple fraud indicators'] : ['Number appears legitimate'],
+      recommendations: score >= 50 ? 
+        ['Do not answer calls from this number', 'Block this number', 'Report as scam'] : 
+        ['Number appears safe but remain cautious'],
+      insights: aiAnalysis?.explanation || `Scam risk score: ${score}/100`,
       processingTime,
       $push: {
         auditTrail: {
@@ -88,7 +87,7 @@ scamQueue.process(async (job) => {
       success: true,
       testId,
       isScam,
-      fraudScore,
+      riskScore: score,
       processingTime
     };
     
