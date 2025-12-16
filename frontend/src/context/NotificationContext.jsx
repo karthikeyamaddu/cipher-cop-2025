@@ -50,20 +50,28 @@ export const NotificationProvider = ({ children }) => {
             const result = data.data.result;
             const displayRiskScore = result.combinedRiskScore || result.riskScore || 0;
 
-            // Show notification
-            showNotification({
-              testId,
-              testType,
-              pageRoute,
-              result: {
-                ...result,
-                riskScore: displayRiskScore // Use combined score if available
-              },
-              details: data.data.details,
-              timestamp: new Date()
-            });
+            // Trigger page refresh before showing notification
+            console.log(`🔄 [Refresh] Triggering page refresh for completed test ${testId}`);
+            window.dispatchEvent(new CustomEvent('testCompleted', { 
+              detail: { testId, testType } 
+            }));
 
-            console.log(`✅ Test ${testId} completed, notification shown (Risk: ${displayRiskScore})`);
+            // Small delay to allow page refresh, then show notification
+            setTimeout(() => {
+              showNotification({
+                testId,
+                testType,
+                pageRoute,
+                result: {
+                  ...result,
+                  riskScore: displayRiskScore // Use combined score if available
+                },
+                details: data.data.details,
+                timestamp: new Date()
+              });
+
+              console.log(`✅ Test ${testId} completed, notification shown (Risk: ${displayRiskScore})`);
+            }, 1000); // 1 second delay for refresh
           } else if (status === 'failed') {
             clearInterval(pollInterval);
             setActivePolls(prev => {
@@ -113,10 +121,13 @@ export const NotificationProvider = ({ children }) => {
 
   // View detailed report (redirect and open modal)
   const viewDetailedReport = (testId, testType, pageRoute) => {
-    console.log('🔗 Navigating to:', pageRoute);
-    console.log('📍 Current location:', window.location.pathname);
+    console.log('🚀 [Navigation] viewDetailedReport called');
+    console.log('🔗 [Navigation] Target pageRoute:', pageRoute);
+    console.log('🎯 [Navigation] TestId:', testId);
+    console.log('📍 [Navigation] Current location:', window.location.pathname);
     
     // Store testId in sessionStorage to open modal on page load
+    console.log('💾 [SessionStorage] Setting openModalForTest:', testId);
     sessionStorage.setItem('openModalForTest', testId);
     
     // Parse the pageRoute to get path and search params
@@ -124,13 +135,15 @@ export const NotificationProvider = ({ children }) => {
     const pathname = url.pathname;
     const search = url.search;
     
-    console.log('🎯 Target path:', pathname, 'Search:', search);
+    console.log('🎯 [Navigation] Target path:', pathname, 'Search:', search);
     
     // Navigate with search params
+    console.log('🧭 [Navigation] Calling navigate with:', { pathname, search });
     navigate({
       pathname: pathname,
       search: search
     });
+    console.log('✅ [Navigation] Navigate called successfully');
     
     // Remove notification after a short delay
     setTimeout(() => {

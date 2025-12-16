@@ -33,6 +33,7 @@ echo.
 echo     REDIS - Redis Server (Windows)
 echo     PHISHING_WORKER - Phishing Worker (Background Queue)
 echo     SCAM_WORKER - Scam Worker (Background Queue)
+echo     MALWARE_WORKER - Malware Worker (Background Queue)
 echo     5173 - Frontend
 echo     5001 - Backend (Node.js)
 echo     5003 - Clone-AI (Gemini)
@@ -69,10 +70,17 @@ if !errorlevel! == 0 (
     echo ✅ Starting Scam Worker (Background Queue)
 )
 
+echo " %selected_ports% " | findstr " MALWARE_WORKER " >nul
+if !errorlevel! == 0 (
+    cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
+    start "Malware Worker" cmd /c "node src/workers/malwareWorker.js"
+    echo ✅ Starting Malware Worker (Background Queue)
+)
+
 echo " %selected_ports% " | findstr " 5173 " >nul
 if !errorlevel! == 0 (
     cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\frontend"
-    if exist env.txt copy /Y env.txt .env >nul
+    REM if exist env.txt copy /Y env.txt .env >nul
     start "Frontend (5173)" cmd /c "npm install && npm run dev"
     echo ✅ Starting Frontend (5173)
 )
@@ -80,7 +88,7 @@ if !errorlevel! == 0 (
 echo " %selected_ports% " | findstr " 5001 " >nul
 if !errorlevel! == 0 (
     cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
-    if exist env.txt copy /Y env.txt .env >nul
+    REM if exist env.txt copy /Y env.txt .env >nul
     start "Backend (5001)" cmd /c "npm install && node server.js"
     echo ✅ Starting Backend (5001)
 )
@@ -88,7 +96,7 @@ if !errorlevel! == 0 (
 echo " %selected_ports% " | findstr " 5003 " >nul
 if !errorlevel! == 0 (
     cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend_py\clone-detection\gemini"
-    if exist env.txt copy /Y env.txt .env >nul
+    REM if exist env.txt copy /Y env.txt .env >nul
     start "Clone-AI (5003)" cmd /c ".venv\Scripts\python.exe app.py"
     echo ✅ Starting Clone-AI (5003)
 )
@@ -166,19 +174,23 @@ start "Phishing Worker" cmd /c "node src/workers/phishingWorker.js"
 cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
 start "Scam Worker" cmd /c "node src/workers/scamWorker.js"
 
+:: ---- MALWARE WORKER (Background Queue) ----
+cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
+start "Malware Worker" cmd /c "node src/workers/malwareWorker.js"
+
 :: ---- FRONTEND (5173) ----
 cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\frontend"
-if exist env.txt copy /Y env.txt .env >nul
+REM if exist env.txt copy /Y env.txt .env >nul
 start "Frontend (5173)" cmd /c "npm install && npm run dev"
 
 :: ---- BACKEND (Node.js, 5001) ----
 cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend"
-if exist env.txt copy /Y env.txt .env >nul
+REM if exist env.txt copy /Y env.txt .env >nul
 start "Backend (5001)" cmd /c "npm install && node server.js"
 
 :: ---- CLONE-AI (Gemini, 5003) ----
 cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend_py\clone-detection\gemini"
-if exist env.txt copy /Y env.txt .env >nul
+REM if exist env.txt copy /Y env.txt .env >nul
 start "Clone-AI (5003)" cmd /c ".venv\Scripts\python.exe app.py"
 
 :: ---- CLONE-ML (Phishpedia, 5000) ----
@@ -225,6 +237,8 @@ echo [*] Stopping all services...
 
 :: Kill by window title first (Redis stays running)
 taskkill /FI "WINDOWTITLE eq Phishing Worker*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Scam Worker*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Malware Worker*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Frontend (5173)*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Backend (5001)*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Clone-AI (5003)*" /F >nul 2>&1

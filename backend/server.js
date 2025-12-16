@@ -22,7 +22,7 @@ const app = express();
 const upload = multer({ 
     storage: multer.memoryStorage(),
     limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB limit
+        fileSize: 50 * 1024 * 1024 // 50MB limit (increased for malware analysis)
     }
 });
 
@@ -37,8 +37,8 @@ app.get("/", (req, res) => {
     res.send("Hello World");
 });
 const router = express.Router();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 app.post("/signup", signup);
 app.post("/login", login);
@@ -906,69 +906,129 @@ app.post('/api/scam/store', protectRoute, async (req, res) => {
     }
 });
 
-// ==================== MALWARE VIRUSTOTAL STORAGE ====================
-app.post('/api/malware/store', protectRoute, async (req, res) => {
-    const startTime = Date.now();
+// ==================== MALWARE ANALYSIS STORAGE (QUEUED - Background Processing) ====================
+app.post('/api/malware/store', protectRoute, upload.single('file'), async (req, res) => {
     try {
-        const { fileName, testType, result } = req.body;
+        const { fileName, testType, activeTab, urlInput, hashInput, xmlInput } = req.body;
         
-        if (!fileName || !testType || !result) {
+        console.log('📥 [Malware] Received request:', {
+            fileName,
+            testType,
+            activeTab,
+            hasFile: !!req.file,
+            bodyKeys: Object.keys(req.body)
+        });
+        
+        if (!fileName || !testType) {
             return res.status(400).json({ 
-                error: 'fileName, testType, and result are required',
-                success: false 
+                success: false,
+                error: `fileName and testType are required. Received: fileName=${fileName}, testType=${testType}`
             });
         }
 
-        console.log(`Storing ${testType} test result for file: ${fileName}`);
-        
-        // Save test result to MongoDB
-        const testResult = new TestResult({
+        // Check concurrent job limit (max 3)
+        const activeCount = await TestResult.countDocuments({
             userId: req.user._id,
-            testType: testType, // 'sandbox' or 'malware'
-            inputData: {
-                fileName: fileName
-            },
-            result: {
-                isMalware: result.positives > 0 || result.verdict === 'malicious',
-                threatLevel: result.verdict || (result.positives > 10 ? 'high' : result.positives > 0 ? 'medium' : 'low'),
-                riskScore: result.threatScore || (result.positives / (result.total || 1)) * 100,
-            },
-            details: {
-                processingTime: Date.now() - startTime,
-                fileName: fileName,
-                scanDate: result.scanDate || new Date().toISOString().split('T')[0],
-                detections: result.detections || [],
-                analysisType: testType,
-                sandboxData: result.sandboxData || null,
-                positives: result.positives || 0,
-                total: result.total || 1,
-                verdict: result.verdict || 'unknown'
-            }
+            processingStatus: { $in: ['queued', 'processing'] }
         });
         
+        if (activeCount >= 3) {
+            return res.status(429).json({
+                success: false,
+                error: 'Maximum 3 concurrent analyses allowed. Please wait for existing analyses to complete.'
+            });
+        }
+
+        console.log(`🔄 [Queue] Queueing ${testType} analysis for: ${fileName}`);
+
+        // Get queue position
+        const queuePosition = await getQueuePosition(testType);
+
+        // Prepare scan data for worker
+        const scanData = {
+            activeTab,
+            urlInput,
+            hashInput,
+            xmlInput
+        };
+
+        // Handle file upload if present
+        let fileId = null;
+        if (req.file) {
+            // Store file in GridFS for worker to access
+            fileId = await uploadToGridFS(
+                req.file.buffer,
+                req.file.originalname,
+                {
+                    userId: req.user._id,
+                    type: 'malware-scan',
+                    originalName: req.file.originalname
+                }
+            );
+            scanData.fileId = fileId;
+            scanData.originalName = req.file.originalname;
+        }
+
+        // Create test result with status='queued'
+        const testResult = new TestResult({
+            userId: req.user._id,
+            testType: testType, // 'malware-virustotal' or 'malware-sandbox'
+            inputData: {
+                fileName: fileName,
+                fileId: fileId
+            },
+            result: {
+                isMalware: false,
+                threatLevel: 'low',
+                riskScore: 0
+            },
+            processingStatus: 'queued',
+            queuePosition: queuePosition,
+            queuedAt: new Date(),
+            attempts: 0,
+            auditTrail: [{
+                status: 'queued',
+                timestamp: new Date(),
+                message: 'Malware analysis queued for background processing'
+            }]
+        });
+
         await testResult.save();
-        
+
         // Add test ID to user's testResults array and increment count
         await User.findByIdAndUpdate(req.user._id, {
             $push: { testResults: testResult._id },
             $inc: { testCount: 1 }
         });
-        
-        console.log(`✅ Test ${testResult._id} added to user ${req.user._id}`);
-        
+
+        // Add job to queue
+        await addJobToQueue(testType, {
+            testId: testResult._id,
+            fileName,
+            testType,
+            scanData, // Pass scan parameters to worker
+            userId: req.user._id
+        });
+
+        console.log(`✅ [Queue] Test ${testResult._id} queued at position ${queuePosition}`);
+
+        // Return immediately with testId for polling
         res.status(200).json({
             success: true,
+            message: 'Malware analysis queued successfully',
             data: {
                 testId: testResult._id,
-                message: `${testType} test result stored successfully`
+                queuePosition: queuePosition,
+                status: 'queued',
+                estimatedWaitTime: queuePosition * 30 // Rough estimate: 30s per job
             }
         });
-        
+
     } catch (error) {
-        console.error('Malware test storage error:', error);
+        console.error('❌ [Queue] Malware queue error:', error);
         res.status(500).json({ 
-            error: 'Failed to store malware test result: ' + error.message,
-            success: false 
+            success: false,
+            error: 'Failed to queue malware analysis'
         });
     }
 });
@@ -1203,78 +1263,6 @@ function analyzeEmailContent(content) {
     };
 }
 
-// Malware test result storage endpoint
-app.post('/api/malware/store', protectRoute, async (req, res) => {
-    const startTime = Date.now();
-    try {
-        console.log('=== MALWARE STORAGE ENDPOINT ===');
-        console.log('Request body:', JSON.stringify(req.body, null, 2));
-        console.log('User from token:', req.user ? req.user._id : 'No user');
-        
-        const { fileName, testType, result } = req.body;
-        
-        console.log('Extracted values:');
-        console.log('fileName:', fileName);
-        console.log('testType:', testType);
-        console.log('result:', result);
-        
-        if (!fileName || !testType || !result) {
-            console.log('❌ Missing required fields');
-            return res.status(400).json({ 
-                error: 'fileName, testType, and result are required',
-                success: false 
-            });
-        }
-
-        console.log(`✅ Storing ${testType} malware test result for file: ${fileName}`);
-        
-        console.log('Creating TestResult document...');
-        // Save test result to MongoDB
-        const testResult = new TestResult({
-            userId: req.user._id,
-            testType: testType, // 'malware' or 'sandbox'
-            inputData: {
-                fileName: fileName
-            },
-            result: {
-                isMalware: result.positives > 0 || result.verdict === 'malicious',
-                threatLevel: result.verdict || (result.positives > 10 ? 'high' : result.positives > 0 ? 'medium' : 'low'),
-                riskScore: result.threatScore || (result.positives / (result.total || 1)) * 100,
-                positives: result.positives || 0,
-                total: result.total || 1,
-                verdict: result.verdict || 'unknown',
-                sandboxData: result.sandboxData || null
-            },
-            details: {
-                processingTime: Date.now() - startTime,
-                fileName: fileName,
-                scanDate: result.scanDate || new Date().toISOString().split('T')[0],
-                detections: result.detections || [],
-                analysisType: testType
-            }
-        });
-        
-        console.log('Saving to MongoDB...');
-        await testResult.save();
-        console.log('✅ Successfully saved to MongoDB');
-        
-        res.status(200).json({
-            success: true,
-            data: {
-                testId: testResult._id,
-                message: `${testType} test result stored successfully`
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Malware test storage error:', error);
-        console.error('Error stack:', error.stack);
-        res.status(500).json({ 
-            error: 'Failed to store malware test result: ' + error.message,
-            success: false 
-        });
-    }
-});
 
 // User profile update endpoint
 app.put('/api/user/update', protectRoute, async (req, res) => {
