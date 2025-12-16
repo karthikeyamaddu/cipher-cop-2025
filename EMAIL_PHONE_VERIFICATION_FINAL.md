@@ -97,16 +97,16 @@ POST /verify-phone-otp              # Verify phone OTP (Twilio Verify)
 ### Email (Mailtrap) - ✅ Working
 ```env
 EMAIL_HOST=sandbox.smtp.mailtrap.io
-EMAIL_HOST_USER=067bdebb57926a
-EMAIL_HOST_PASSWORD=811379e4f1d798
+EMAIL_HOST_USER=06
+EMAIL_HOST_PASSWORD=8113
 EMAIL_PORT=2525
 ```
 
 ### SMS (Twilio Verify) - ⚠️ Trial Account Limitations
 ```env
 TWILIO_ACCOUNT_SID=ACbb
-TWILIO_AUTH_TOKEN=b06d307626788a0263b29f9eb73e7d23
-TWILIO_VERIFY_SERVICE_SID=VAcff03fe0797fe4bf8c5c5a514166efe2
+TWILIO_AUTH_TOKEN=b06d3
+TWILIO_VERIFY_SERVICE_SID=VAc
 ```
 
 ### Redis - ✅ Working
