@@ -6,7 +6,7 @@ let gridFSBucket = null;
 
 export const connectDB = async () => {
   try {
-    con = await mongoose.connect("mongodb+srv://fraudlens:fraudlens123@cluster0.qmhucr4.mongodb.net/ciphercop", {
+    con = await mongoose.connect("mongodb+srvcop", {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });
