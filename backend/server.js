@@ -1421,6 +1421,7 @@ app.get('/api/user/profile', protectRoute, async (req, res) => {
                 role: user.role,
                 accountStatus: user.accountStatus,
                 emailVerified: user.emailVerified,
+                phoneVerified: user.phoneVerified,
                 lastLogin: user.lastLogin,
                 loginCount: user.loginCount,
                 testCount: user.testCount || 0,
@@ -1678,85 +1679,25 @@ app.get('/api/dashboard/stats', protectRoute, async (req, res) => {
     }
 });
 
-// Email verification endpoint
-app.post('/api/user/verify-email', protectRoute, async (req, res) => {
-    try {
-        const { email } = req.body;
-        const userId = req.user._id;
-        
-        console.log('Email verification requested for:', email);
-        
-        // Validate email
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!email || !emailRegex.test(email)) {
-            return res.status(400).json({
-                error: 'Please enter a valid email address',
-                success: false
-            });
-        }
-        
-        // In a real application, you would:
-        // 1. Generate a verification token
-        // 2. Send an email with the verification link
-        // 3. Store the token in database with expiration
-        
-        // For demo purposes, we'll just return success
-        console.log(`Verification email would be sent to: ${email}`);
-        
-        res.status(200).json({
-            success: true,
-            message: 'Verification email sent successfully'
-        });
-        
-    } catch (error) {
-        console.error('Email verification error:', error);
-        res.status(500).json({
-            error: 'Failed to send verification email: ' + error.message,
-            success: false
-        });
-    }
-});
+// ==================== EMAIL & PHONE VERIFICATION ====================
+import { 
+    sendEmailOTP, 
+    verifyEmailOTP, 
+    sendPhoneOTP, 
+    verifyPhoneOTP, 
+    getVerificationStatus 
+} from './src/controller/verification.js';
 
-// Phone verification endpoint
-app.post('/api/user/verify-phone', protectRoute, async (req, res) => {
-    try {
-        const { phone } = req.body;
-        const userId = req.user._id;
-        
-        console.log('Phone verification requested for:', phone);
-        
-        // Validate phone
-        const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-        const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
-        if (!phone || !phoneRegex.test(cleanPhone)) {
-            return res.status(400).json({
-                error: 'Please enter a valid phone number',
-                success: false
-            });
-        }
-        
-        // In a real application, you would:
-        // 1. Generate a verification code (OTP)
-        // 2. Send SMS with the verification code
-        // 3. Store the code in database with expiration
-        // 4. Provide endpoint to verify the code
-        
-        // For demo purposes, we'll just return success
-        console.log(`Verification code would be sent to: ${phone}`);
-        
-        res.status(200).json({
-            success: true,
-            message: 'Verification code sent successfully'
-        });
-        
-    } catch (error) {
-        console.error('Phone verification error:', error);
-        res.status(500).json({
-            error: 'Failed to send verification code: ' + error.message,
-            success: false
-        });
-    }
-});
+// Get verification status
+app.get('/api/user/verification-status', protectRoute, getVerificationStatus);
+
+// Email verification endpoints
+app.post('/api/user/send-email-otp', protectRoute, sendEmailOTP);
+app.post('/api/user/verify-email-otp', protectRoute, verifyEmailOTP);
+
+// Phone verification endpoints  
+app.post('/api/user/send-phone-otp', protectRoute, sendPhoneOTP);
+app.post('/api/user/verify-phone-otp', protectRoute, verifyPhoneOTP);
 
 // ==================== BULL BOARD & ADMIN ROUTES ====================
 // Bull Board UI for queue monitoring

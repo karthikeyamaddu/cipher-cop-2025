@@ -30,6 +30,11 @@ const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState('profile'); // profile, security, activity
   const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
   const [isVerifyingPhone, setIsVerifyingPhone] = useState(false);
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpType, setOtpType] = useState(''); // 'email' or 'phone'
+  const [otpValue, setOtpValue] = useState('');
+  const [otpTarget, setOtpTarget] = useState(''); // email address or phone number
+  const [otpLoading, setOtpLoading] = useState(false);
 
   // Initialize user data
   useEffect(() => {
@@ -144,12 +149,11 @@ const ProfilePage = () => {
       errors.email = 'Please enter a valid email address';
     }
 
-    // Phone validation (international format)
+    // Phone validation (10 digits only)
     if (editableUser.phone) {
-      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-      const cleanPhone = editableUser.phone.replace(/[\s\-\(\)]/g, '');
-      if (!phoneRegex.test(cleanPhone)) {
-        errors.phone = 'Please enter a valid phone number (e.g., +1234567890)';
+      const phoneRegex = /^\d{10}$/;
+      if (!phoneRegex.test(editableUser.phone)) {
+        errors.phone = 'Please enter exactly 10 digits (e.g., 9959511898)';
       }
     }
 
@@ -286,7 +290,8 @@ const ProfilePage = () => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:5001/api/user/verify-email', {
+      // Step 1: Send OTP
+      const response = await fetch('http://localhost:5001/api/user/send-email-otp', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -295,13 +300,12 @@ const ProfilePage = () => {
 
       const result = await response.json();
       if (response.ok && result.success) {
-        setSuccessMessage('Verification email sent! Check your inbox.');
-        // In a real app, you'd wait for the user to click the verification link
-        // For demo purposes, we'll simulate verification after a delay
-        setTimeout(() => {
-          setEditableUser(prev => ({ ...prev, emailVerified: true }));
-          setSuccessMessage('Email verified successfully!');
-        }, 3000);
+        // Step 2: Show OTP Modal
+        setOtpType('email');
+        setOtpTarget(editableUser.email);
+        setOtpValue('');
+        setShowOtpModal(true);
+        setSuccessMessage('OTP sent to your email successfully!');
       } else {
         setError(result.error || 'Failed to send verification email');
       }
@@ -313,6 +317,68 @@ const ProfilePage = () => {
     }
   };
 
+  // OTP verification handler
+  const handleOtpVerification = async () => {
+    if (!otpValue || otpValue.length !== 6) {
+      setError('Please enter a valid 6-digit OTP');
+      return;
+    }
+
+    setOtpLoading(true);
+    setError('');
+
+    try {
+      const endpoint = otpType === 'email' 
+        ? '/api/user/verify-email-otp' 
+        : '/api/user/verify-phone-otp';
+      
+      const body = otpType === 'email' 
+        ? { email: otpTarget, otp: otpValue.trim() }
+        : { phone: otpTarget, otp: otpValue.trim() };
+
+      const response = await fetch(`http://localhost:5001${endpoint}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      const result = await response.json();
+      if (response.ok && result.success) {
+        // Update user verification status
+        if (otpType === 'email') {
+          setEditableUser(prev => ({ ...prev, emailVerified: true }));
+          setSuccessMessage('Email verified successfully!');
+        } else {
+          setEditableUser(prev => ({ ...prev, phoneVerified: true }));
+          setSuccessMessage('Phone verified successfully!');
+        }
+        
+        // Close modal and reset
+        setShowOtpModal(false);
+        setOtpValue('');
+        setOtpType('');
+        setOtpTarget('');
+      } else {
+        setError(result.error || 'Invalid or expired OTP. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error verifying OTP:', error);
+      setError('Network error occurred');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  // Close OTP modal
+  const handleCloseOtpModal = () => {
+    setShowOtpModal(false);
+    setOtpValue('');
+    setOtpType('');
+    setOtpTarget('');
+    setError('');
+  };
+
   // Phone verification handler
   const handlePhoneVerification = async () => {
     if (!editableUser.phone) {
@@ -320,11 +386,10 @@ const ProfilePage = () => {
       return;
     }
 
-    // Basic phone validation
-    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-    const cleanPhone = editableUser.phone.replace(/[\s\-\(\)]/g, '');
-    if (!phoneRegex.test(cleanPhone)) {
-      setError('Please enter a valid phone number');
+    // Validate 10 digits only (no country code)
+    const phoneRegex = /^\d{10}$/;
+    if (!phoneRegex.test(editableUser.phone)) {
+      setError('Please enter exactly 10 digits (e.g., 9959511898)');
       return;
     }
 
@@ -332,24 +397,29 @@ const ProfilePage = () => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:5001/api/user/verify-phone', {
+      // Step 1: Send OTP (backend will handle phone cleaning and validation)
+      const response = await fetch('http://localhost:5001/api/user/send-phone-otp', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: editableUser.phone }),
+        body: JSON.stringify({ phone: editableUser.phone }), // Send original format
       });
 
       const result = await response.json();
       if (response.ok && result.success) {
-        setSuccessMessage('Verification code sent! Check your SMS.');
-        // In a real app, you'd show an OTP input modal
-        // For demo purposes, we'll simulate verification after a delay
-        setTimeout(() => {
-          setEditableUser(prev => ({ ...prev, phoneVerified: true }));
-          setSuccessMessage('Phone verified successfully!');
-        }, 3000);
+        // Step 2: Show OTP Modal
+        setOtpType('phone');
+        setOtpTarget(editableUser.phone); // Show original format to user
+        setOtpValue('');
+        setShowOtpModal(true);
+        setSuccessMessage('OTP sent to your phone successfully!');
       } else {
-        setError(result.error || 'Failed to send verification code');
+        // Handle Twilio trial account limitations and other errors
+        if (result.error && (result.error.includes('unverified') || result.error.includes('Trial'))) {
+          setError('Twilio trial account limitation: Please verify your phone number at https://console.twilio.com/us1/develop/phone-numbers/manage/verified or upgrade your Twilio account.');
+        } else {
+          setError(result.error || 'Failed to send verification code');
+        }
       }
     } catch (error) {
       console.error('Error verifying phone:', error);
@@ -620,10 +690,15 @@ const ProfilePage = () => {
                   <input
                     type="tel"
                     value={editableUser.phone || ''}
-                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    onChange={(e) => {
+                      // Only allow digits, limit to 10 digits
+                      const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      handleInputChange('phone', value);
+                    }}
                     disabled={!isEditing}
                     className={`form-input ${validationErrors.phone ? 'error' : ''}`}
-                    placeholder="+1 (555) 123-4567"
+                    placeholder="9959511898 (10 digits only)"
+                    maxLength="10"
                   />
                   <button
                     type="button"
@@ -639,6 +714,9 @@ const ProfilePage = () => {
                       'Verify'
                     )}
                   </button>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem' }}>
+                  Enter 10 digits only (e.g., 9959511898). Do not include +91 or country code.
                 </div>
                 {validationErrors.phone && (
                   <div className="error-message">
@@ -1065,6 +1143,91 @@ const ProfilePage = () => {
         </div>
       )}
 
+      {/* OTP Verification Modal */}
+      {showOtpModal && (
+        <div className="modal-overlay" onClick={handleCloseOtpModal}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-section">
+                <div className="card-icon">
+                  {otpType === 'email' ? <Mail size={20} /> : <Phone size={20} />}
+                </div>
+                <h3 className="modal-title">
+                  Verify {otpType === 'email' ? 'Email' : 'Phone Number'}
+                </h3>
+              </div>
+              <button
+                onClick={handleCloseOtpModal}
+                className="modal-close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <p className="modal-description">
+                Enter the 6-digit OTP sent to your {otpType === 'email' ? 'email' : 'phone'}:
+              </p>
+              <p className="modal-target">
+                <strong>{otpTarget}</strong>
+              </p>
+              
+              <div className="form-group">
+                <label className="form-label">Verification Code</label>
+                <input
+                  type="text"
+                  value={otpValue}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    setOtpValue(value);
+                  }}
+                  className="form-input"
+                  placeholder="Enter 6-digit OTP"
+                  maxLength="6"
+                  style={{ 
+                    textAlign: 'center', 
+                    fontSize: '1.2rem', 
+                    letterSpacing: '0.2rem',
+                    fontWeight: 'bold'
+                  }}
+                />
+              </div>
+
+              <div className="otp-info">
+                <p style={{ fontSize: '0.875rem', color: '#64748b', textAlign: 'center' }}>
+                  {otpType === 'email' ? 'Check your email inbox and spam folder' : 'Check your SMS messages'}
+                </p>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                onClick={handleCloseOtpModal}
+                className="btn btn-ghost"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleOtpVerification}
+                disabled={otpLoading || otpValue.length !== 6}
+                className="btn btn-primary"
+              >
+                {otpLoading ? (
+                  <>
+                    <div className="loading-spinner" style={{ width: '1rem', height: '1rem' }}></div>
+                    <span>Verifying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Shield size={16} />
+                    <span>Verify OTP</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

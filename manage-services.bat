@@ -44,6 +44,7 @@ echo     5005 - Malware-Sandbox
 echo     5006 - Phone-Scam Detection
 echo     5007 - ML-Phishing Detection
 echo     5008 - Email-ML-Phishing Detection
+echo     5009 - Email-Phone-Verification
 echo.
 set /p selected_ports="Enter services to start (space-separated, e.g., REDIS PHISHING_WORKER SCAM_WORKER 5173 5001): "
 
@@ -150,6 +151,13 @@ if !errorlevel! == 0 (
     echo ✅ Starting Email-ML-Phishing (5008)
 )
 
+echo " %selected_ports% " | findstr " 5009 " >nul
+if !errorlevel! == 0 (
+    cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend_py\email-phone-verification"
+    start "Email-Phone-Verification (5009)" cmd /c "venv\Scripts\python.exe app.py"
+    echo ✅ Starting Email-Phone-Verification (5009)
+)
+
 echo.
 echo Selected services are starting. Please wait a few seconds...
 pause
@@ -222,6 +230,10 @@ start "ML-Phishing (5007)" cmd /c ".venv\Scripts\python.exe app.py"
 cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend_py\phishing-detection\phishing-email-ml"
 start "Email-ML-Phishing (5008)" cmd /c "venv\Scripts\python.exe app.py"
 
+:: ---- EMAIL & PHONE VERIFICATION (5009) ----
+cd /d "D:\volume E\ciphercop-2025\overall\ciphercopdemo\backend_py\email-phone-verification"
+start "Email-Phone-Verification (5009)" cmd /c "venv\Scripts\python.exe app.py"
+
 echo.
 echo All services are starting. Please wait a few seconds...
 pause
@@ -249,9 +261,10 @@ taskkill /FI "WINDOWTITLE eq Malware-Sandbox (5005)*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Phone-Scam (5006)*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq ML-Phishing (5007)*" /F >nul 2>&1
 taskkill /FI "WINDOWTITLE eq Email-ML-Phishing (5008)*" /F >nul 2>&1
+taskkill /FI "WINDOWTITLE eq Email-Phone-Verification (5009)*" /F >nul 2>&1
 
 :: Kill processes by port as backup
-for %%p in (5173 5001 5003 5000 5004 5002 5005 5006 5007 5008) do (
+for %%p in (5173 5001 5003 5000 5004 5002 5005 5006 5007 5008 5009) do (
     for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%%p" ^| findstr "LISTENING"') do (
         if not "%%a"=="" (
             taskkill /PID %%a /F >nul 2>&1
@@ -294,7 +307,7 @@ if %errorlevel% == 0 (
 )
 
 :: Check all port-based services (faster)
-for %%p in (5173 5001 5003 5000 5004 5002 5005 5006 5007 5008) do (
+for %%p in (5173 5001 5003 5000 5004 5002 5005 5006 5007 5008 5009) do (
     netstat -ano | findstr ":%%p.*LISTENING" >nul 2>&1
     if !errorlevel! == 0 (
         echo ✅ Service on port %%p: RUNNING

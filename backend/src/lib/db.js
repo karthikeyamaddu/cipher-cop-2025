@@ -70,6 +70,10 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    phoneVerified: {
+      type: Boolean,
+      default: false
+    },
     lastLogin: {
       type: Date,
       default: null
