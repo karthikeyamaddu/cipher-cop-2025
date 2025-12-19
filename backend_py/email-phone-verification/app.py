@@ -88,26 +88,27 @@ def verify_otp(key, otp):
         return False
 
 def send_email_otp(email, otp):
-    """Send OTP via email using SMTP"""
+    """Send OTP via email using Gmail SMTP with App Password"""
     try:
-        # Email configuration
+        # Prefer new Gmail App Password env vars; fallback to legacy names for safety
+        smtp_user = os.getenv('EMAIL_USER') or os.getenv('EMAIL_HOST_USER')
+        smtp_password = os.getenv('EMAIL_PASS') or os.getenv('EMAIL_HOST_PASSWORD')
         smtp_server = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
         smtp_port = int(os.getenv('EMAIL_PORT', 587))
-        smtp_user = os.getenv('EMAIL_HOST_USER')
-        smtp_password = os.getenv('EMAIL_HOST_PASSWORD')
         from_email = os.getenv('DEFAULT_FROM_EMAIL', smtp_user)
         
         if not smtp_user or not smtp_password:
             print("❌ Email credentials not configured")
             return False
         
-        # Create message
+        # Debug info (without exposing password)
+        print(f"🔧 SMTP Config: {smtp_server}:{smtp_port}, User: {smtp_user[:3]}***@{smtp_user.split('@')[1] if '@' in smtp_user else 'unknown'}")
+        
         msg = MIMEMultipart()
         msg['From'] = from_email
         msg['To'] = email
         msg['Subject'] = "CipherCop - Email Verification Code"
         
-        # Email body
         body = f"""
         <html>
         <body>
@@ -128,18 +129,33 @@ def send_email_otp(email, otp):
         
         msg.attach(MIMEText(body, 'html'))
         
-        # Send email
-        server = smtplib.SMTP(smtp_server, smtp_port)
+        print("🔌 Connecting to SMTP server...")
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
+        
+        print("🔐 Starting TLS...")
         server.starttls()
+        
+        print("🔑 Logging in...")
         server.login(smtp_user, smtp_password)
+        
+        print("📧 Sending email...")
         server.send_message(msg)
         server.quit()
         
         print(f"✅ Email sent to {email}")
         return True
         
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"❌ SMTP Authentication failed: {e}")
+        print("💡 Check: 1) App Password is correct 2) 2-Step Verification enabled 3) Use 16-char App Password (no spaces)")
+        return False
+    except smtplib.SMTPException as e:
+        print(f"❌ SMTP error: {e}")
+        return False
     except Exception as e:
-        print(f"❌ Email sending failed: {e}")
+        print(f"❌ Email sending failed: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 # Note: Using Twilio Verify Service directly in endpoints
@@ -154,7 +170,7 @@ def health():
         'services': {
             'redis': redis_client is not None,
             'twilio': twilio_client is not None,
-            'email': bool(os.getenv('EMAIL_HOST_USER'))
+            'email': bool(os.getenv('EMAIL_USER') or os.getenv('EMAIL_HOST_USER'))
         }
     })
 

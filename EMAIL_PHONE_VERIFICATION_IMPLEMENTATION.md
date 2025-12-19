@@ -96,7 +96,7 @@ cp .env.example .env
 EMAIL_HOST=smtp.gmail.com
 EMAIL_HOST_USER=your-email@gmail.com
 EMAIL_HOST_PASSWORD=your-app-password
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxx
+TWILIO_ACCOUNT_SID=YOUR_TWILIO_ACCOUNT_SID
 TWILIO_AUTH_TOKEN=your_auth_token
 REDIS_HOST=localhost
 REDIS_PORT=6379
@@ -238,7 +238,7 @@ EMAIL_SERVER=SENDGRID
 SENDGRID_API_KEY=SG.production_key
 
 # Production Twilio
-TWILIO_ACCOUNT_SID=AC_production_sid
+TWILIO_ACCOUNT_SID=YOUR_TWILIO_ACCOUNT_SID
 TWILIO_AUTH_TOKEN=production_token
 ```
 

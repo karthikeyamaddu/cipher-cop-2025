@@ -345,7 +345,7 @@ DEFAULT_FROM_EMAIL=noreply@yourapp.com
 # SMTP_FROM=verified-sender@yourapp.com
 
 # Twilio Configuration
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxx
+TWILIO_ACCOUNT_SID=YOUR_TWILIO_ACCOUNT_SID
 TWILIO_AUTH_TOKEN=your_auth_token
 TWILIO_VERIFY_SERVICE_SID=VAxxxxxxxxxxxxxxxxxxxxx
 

@@ -272,7 +272,7 @@ Content-Type: application/json
 # Production Environment Variables
 EMAIL_SERVER=SENDGRID
 SENDGRID_API_KEY=SG.xxxxxxxxxxxxx
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxx
+TWILIO_ACCOUNT_SID=YOUR_TWILIO_ACCOUNT_SID
 TWILIO_AUTH_TOKEN=xxxxxxxxxxxxx
 TWILIO_VERIFY_SERVICE_SID=VAxxxxxxxxxxxxx
 REDIS_OTP_URL=redis://production-redis:6379/1
